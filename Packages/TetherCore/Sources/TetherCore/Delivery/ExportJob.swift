@@ -36,15 +36,43 @@ public struct ExportOptions: Codable, Hashable, Sendable {
     public var jpegQuality: Double
     public var includeRAW: Bool
     public var filenamePrefix: String?
+    /// Interop: how files are named and arranged, and what metadata rides along.
+    public var naming: NamingTemplate
+    public var layout: FolderLayout
+    public var embedMetadata: Bool        // XMP packet inside exported JPEGs
+    public var writeSidecars: Bool        // .xmp next to RAW (and JPEG when the profile asks)
+    public var writeManifest: Bool        // session manifest JSON + CSV with the files
 
     public init(applyLook: Bool = true, watermark: Bool = false, maxLongEdge: Int? = nil, jpegQuality: Double = 0.92,
-                includeRAW: Bool = false, filenamePrefix: String? = nil) {
+                includeRAW: Bool = false, filenamePrefix: String? = nil, naming: NamingTemplate = .original,
+                layout: FolderLayout = .flat, embedMetadata: Bool = true, writeSidecars: Bool = true, writeManifest: Bool = false) {
         self.applyLook = applyLook
         self.watermark = watermark
         self.maxLongEdge = maxLongEdge
         self.jpegQuality = jpegQuality
         self.includeRAW = includeRAW
         self.filenamePrefix = filenamePrefix
+        self.naming = naming
+        self.layout = layout
+        self.embedMetadata = embedMetadata
+        self.writeSidecars = writeSidecars
+        self.writeManifest = writeManifest
+    }
+
+    /// Tolerate options saved before the interop fields existed.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        applyLook = try c.decodeIfPresent(Bool.self, forKey: .applyLook) ?? true
+        watermark = try c.decodeIfPresent(Bool.self, forKey: .watermark) ?? false
+        maxLongEdge = try c.decodeIfPresent(Int.self, forKey: .maxLongEdge)
+        jpegQuality = try c.decodeIfPresent(Double.self, forKey: .jpegQuality) ?? 0.92
+        includeRAW = try c.decodeIfPresent(Bool.self, forKey: .includeRAW) ?? false
+        filenamePrefix = try c.decodeIfPresent(String.self, forKey: .filenamePrefix)
+        naming = try c.decodeIfPresent(NamingTemplate.self, forKey: .naming) ?? .original
+        layout = try c.decodeIfPresent(FolderLayout.self, forKey: .layout) ?? .flat
+        embedMetadata = try c.decodeIfPresent(Bool.self, forKey: .embedMetadata) ?? true
+        writeSidecars = try c.decodeIfPresent(Bool.self, forKey: .writeSidecars) ?? true
+        writeManifest = try c.decodeIfPresent(Bool.self, forKey: .writeManifest) ?? false
     }
 }
 
@@ -74,8 +102,15 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
         public var watermark: Bool
         public var state: State
         public var remoteID: String?    // cloud item id / Photos local identifier
+        /// Interop: the name and relative folder the file is delivered under
+        /// (set by the queue from `ExportOptions.naming` / `.layout`).
+        public var exportFilename: String?
+        public var exportDirectory: String?
+        /// True for a generated companion (XMP sidecar, manifest), not a photo.
+        public var isCompanion: Bool
 
-        public init(id: String, filename: String, kind: MediaKind, bytes: Int, watermark: Bool = false, state: State = .pending, remoteID: String? = nil) {
+        public init(id: String, filename: String, kind: MediaKind, bytes: Int, watermark: Bool = false, state: State = .pending, remoteID: String? = nil,
+                    exportFilename: String? = nil, exportDirectory: String? = nil, isCompanion: Bool = false) {
             self.id = id
             self.filename = filename
             self.kind = kind
@@ -83,6 +118,29 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
             self.watermark = watermark
             self.state = state
             self.remoteID = remoteID
+            self.exportFilename = exportFilename
+            self.exportDirectory = exportDirectory
+            self.isCompanion = isCompanion
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            filename = try c.decode(String.self, forKey: .filename)
+            kind = try c.decode(MediaKind.self, forKey: .kind)
+            bytes = try c.decode(Int.self, forKey: .bytes)
+            watermark = try c.decodeIfPresent(Bool.self, forKey: .watermark) ?? false
+            state = try c.decodeIfPresent(State.self, forKey: .state) ?? .pending
+            remoteID = try c.decodeIfPresent(String.self, forKey: .remoteID)
+            exportFilename = try c.decodeIfPresent(String.self, forKey: .exportFilename)
+            exportDirectory = try c.decodeIfPresent(String.self, forKey: .exportDirectory)
+            isCompanion = try c.decodeIfPresent(Bool.self, forKey: .isCompanion) ?? false
+        }
+
+        /// Final relative path under the destination root.
+        public var deliveredRelativePath: String {
+            let name = exportFilename ?? filename
+            return (exportDirectory ?? "").isEmpty ? name : "\(exportDirectory!)/\(name)"
         }
         public var isDone: Bool { if case .done = state { return true }; if case .skipped = state { return true }; return false }
     }

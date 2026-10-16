@@ -30,6 +30,7 @@ public actor ExportQueue {
     private let renderer: ExportRenderer
     private var cloud: TetherCloudClient?
     private let looks: LookResolver
+    private let memory: WorkspaceMemory?
     private let ftpClientFactory: (@Sendable (StoredFTPDestination) -> FTPUploadingBox?)?
     private var running = false
     private var paused = false
@@ -38,7 +39,7 @@ public actor ExportQueue {
     public nonisolated let events: AsyncStream<Event>
 
     public init(store: SessionStore, cache: CaptureCacheProxy, sink: ExportSink, renderer: ExportRenderer = PassthroughRenderer(),
-                cloud: TetherCloudClient? = nil, looks: LookResolver,
+                cloud: TetherCloudClient? = nil, looks: LookResolver, memory: WorkspaceMemory? = nil,
                 ftpClientFactory: (@Sendable (StoredFTPDestination) -> FTPUploadingBox?)? = nil) {
         self.store = store
         self.cache = cache
@@ -46,6 +47,7 @@ public actor ExportQueue {
         self.renderer = renderer
         self.cloud = cloud
         self.looks = looks
+        self.memory = memory
         self.ftpClientFactory = ftpClientFactory
         var c: AsyncStream<Event>.Continuation!
         events = AsyncStream(bufferingPolicy: .bufferingNewest(64)) { c = $0 }
@@ -67,7 +69,30 @@ public actor ExportQueue {
                 if remaining > 0 { remaining -= 1 } else { items[i].watermark = true }
             }
         }
+        // Interop: resolve names and folders now so the UI can preview them.
+        let caps = Dictionary(uniqueKeysWithValues: captures.map { ($0.id, $0) })
+        var used = Set<String>()
+        for i in items.indices {
+            guard let c = caps[items[i].id] else { continue }
+            let dir = options.layout.directory(for: c, sessionName: session.name)
+            let ext = (c.filename as NSString).pathExtension
+            var base = options.naming.render(capture: c, sessionName: session.name, index: c.sequence, camera: session.camera?.displayName,
+                                             tags: (try? store.tags(for: c.id)) ?? [], client: session.workflowTag)
+            var name = ext.isEmpty ? base : "\(base).\(ext)"
+            var n = 1
+            while used.contains((dir + "/" + name).lowercased()) { n += 1; name = ext.isEmpty ? "\(base)-\(n)" : "\(base)-\(n).\(ext)" }
+            used.insert((dir + "/" + name).lowercased())
+            _ = base
+            base = ""
+            items[i].exportFilename = name
+            items[i].exportDirectory = dir
+        }
         return ExportJob(sessionID: session.id, destination: destination, options: options, look: look, items: items)
+    }
+
+    /// Where companions (sidecars, manifests) make sense: anywhere files land as files.
+    private func deliversFiles(_ d: ExportDestination) -> Bool {
+        switch d { case .photos, .share: return false; default: return true }
     }
 
     public func enqueue(_ job: ExportJob) throws {
@@ -137,6 +162,7 @@ public actor ExportQueue {
                 _ = try await cloud.completeBatch(b)
             }
             job.status = job.failedItems.isEmpty ? .completed : .failed("\(job.failedItems.count) of \(job.items.count) failed")
+            if job.failedItems.isEmpty { await writeManifestIfWanted(job) }
         } catch {
             job.status = .failed("\(error)")
         }
@@ -156,7 +182,24 @@ public actor ExportQueue {
         let original = try cache.url(for: rel)
         var options = job.options
         options.watermark = item.watermark
-        let rendered = item.kind == .raw ? original : try await renderer.render(original: original, item: item, look: job.options.applyLook ? lut : nil, options: options)
+        var rendered = item.kind == .raw ? original : try await renderer.render(original: original, item: item, look: job.options.applyLook ? lut : nil, options: options)
+        let profile = memory?.get(WorkspaceMemory.metadataProfile) ?? MetadataProfile()
+        let sessionName = try store.session(job.sessionID)?.name
+        let packet = XMPPacket(capture: capture, tags: try store.tags(for: capture.id), profile: profile, sessionName: sessionName)
+        if job.options.embedMetadata, profile.embedInJPEG, item.kind == .jpeg {
+            if let data = try? Data(contentsOf: rendered), let stamped = try? JPEGXMP.embed(packet, in: data) {
+                let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tether-xmp-\(UUID().uuidString).jpg")
+                try stamped.write(to: tmp)
+                if rendered != original { try? FileManager.default.removeItem(at: rendered) }
+                rendered = tmp
+            }
+        }
+        var sidecar: (Data, String)?
+        if job.options.writeSidecars, deliversFiles(job.destination),
+           (item.kind == .raw && profile.writeSidecarsForRAW) || (item.kind != .raw && profile.writeSidecarsForJPEG) {
+            let base = ((item.exportFilename ?? item.filename) as NSString).deletingPathExtension
+            sidecar = (packet.data, base + ".xmp")
+        }
 
         switch job.destination {
         case .cloudBatch:
@@ -184,7 +227,41 @@ public actor ExportQueue {
             try? store.recordExport(captureID: item.id, destination: key, jobID: job.id, remoteID: id)
         }
         if rendered != original { try? FileManager.default.removeItem(at: rendered) }
+        if let (data, name) = sidecar { try await deliverCompanion(data, named: name, directory: item.exportDirectory, job: job) }
         save(job)
+    }
+
+    /// Send a generated file (sidecar, manifest) the same way the photos went.
+    private func deliverCompanion(_ data: Data, named name: String, directory: String?, job: ExportJob) async throws {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tether-companion-\(UUID().uuidString)-\(name)")
+        try data.write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let item = ExportJob.Item(id: "companion-\(name)", filename: name, kind: .other, bytes: data.count, exportFilename: name, exportDirectory: directory, isCompanion: true)
+        switch job.destination {
+        case .ftp(let destinationID):
+            guard let dest = try store.ftpDestinations().first(where: { $0.id == destinationID }), let client = ftpClientFactory?(dest) else { return }
+            try await client.upload(data, (dest.remoteDirectory as NSString).appendingPathComponent(item.deliveredRelativePath))
+        case .cloudBatch:
+            break // the cloud batch keeps metadata in the manifest it already stores
+        default:
+            _ = try await sink.deliver(fileURL: tmp, item: item, destination: job.destination)
+        }
+    }
+
+    /// Manifest (JSON + CSV) for a finished job, when the destination holds files.
+    private func writeManifestIfWanted(_ job: ExportJob) async {
+        guard job.options.writeManifest, deliversFiles(job.destination), let session = try? store.session(job.sessionID) else { return }
+        let caps = (try? store.captures(ids: job.items.filter { !$0.isCompanion }.map(\.id))) ?? []
+        var tags: [String: [String]] = [:], colls: [String: [String]] = [:]
+        let names = Dictionary(uniqueKeysWithValues: job.items.compactMap { i in i.exportFilename.map { (i.id, $0) } })
+        for c in caps {
+            tags[c.id] = try? store.tags(for: c.id)
+            colls[c.id] = (try? store.collectionIDs(containing: c.id))?.compactMap { try? store.collection($0)?.name }
+        }
+        let manifest = SessionManifest(session: session, captures: caps, tags: tags, collections: colls, exportedNames: names)
+        let base = NamingTemplate.safe(session.name)
+        if let json = try? manifest.json() { try? await deliverCompanion(json, named: "\(base)-manifest.json", directory: job.options.layout == .captureOne ? "\(base)/Output" : "", job: job) }
+        try? await deliverCompanion(Data(manifest.csv().utf8), named: "\(base)-manifest.csv", directory: job.options.layout == .captureOne ? "\(base)/Output" : "", job: job)
     }
 
     private func ensureCloudBatch(_ job: inout ExportJob) async throws {

@@ -416,7 +416,19 @@ public actor TetherSession {
             if let p = out.proxyJPEG { item.proxyRelativePath = try? cache.store(p, at: cache.proxyPath(session: session, filename: name)) }
             if let t = out.thumbnailJPEG { item.thumbnailRelativePath = try? cache.store(t, at: cache.thumbnailPath(session: session, filename: name)) }
             item.state = .ready
+            // Interop: metadata that came with the file (Photo Mechanic / Capture
+            // One sidecar, or an embedded packet) seeds rating, flag, label, tags.
+            var incomingTags: [String] = []
+            let sidecarURL = url.deletingPathExtension().appendingPathExtension("xmp")
+            if let sc = try? Data(contentsOf: sidecarURL), let packet = try? XMPPacket(parsing: sc) {
+                incomingTags = packet.applied(to: &item)
+                try? FileManager.default.removeItem(at: sidecarURL)
+            } else if kind == .jpeg, let packet = try? JPEGXMP.extract(from: data) {
+                incomingTags = packet.applied(to: &item)
+            }
             try? FileManager.default.removeItem(at: url)
+            upsert(item)
+            if !incomingTags.isEmpty { try? store.addTags(incomingTags, to: [item.id]) }
         } catch {
             item.state = .failed("\(error)")
         }
