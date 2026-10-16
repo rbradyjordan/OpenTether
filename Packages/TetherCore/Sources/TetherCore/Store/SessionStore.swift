@@ -129,6 +129,7 @@ public final class SessionStore: @unchecked Sendable {
 
     public struct SessionCounts: Equatable, Sendable {
         public var total = 0, ready = 0, picks = 0, rejects = 0, rated = 0, failed = 0
+        public init() {}
     }
 
     public func counts(in sessionID: String) throws -> SessionCounts {

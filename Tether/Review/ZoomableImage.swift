@@ -53,6 +53,56 @@ struct ZoomableImage: View {
     }
 }
 
+/// Loads a capture file from the cache proxy and makes it zoomable. Zoom
+/// resets when the path changes.
+struct CachedZoomableImage: View {
+    let cache: CaptureCacheProxy
+    var relativePath: String?
+    var maxPixelSize: Int = 4096
+    @State private var image: UIImage?
+    @State private var failed = false
+    @State private var scale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            if let image {
+                ZoomableImage(image: image, scale: $scale, offset: $offset)
+                    .transition(.opacity)
+            } else if failed || relativePath == nil {
+                Image(systemName: "photo").foregroundStyle(TetherColor.ink2)
+                    .accessibilityLabel(failed ? "Image unavailable" : "No image")
+            } else {
+                ProgressView().tint(TetherColor.ink1)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: image == nil)
+        .task(id: "\(relativePath ?? "-")#\(maxPixelSize)") { await load() }
+    }
+
+    private func load() async {
+        scale = 1
+        offset = .zero
+        failed = false
+        guard let path = relativePath else { image = nil; return }
+        let key = "\(path)#\(maxPixelSize)"
+        if let hit = ImageMemoryCache.shared.image(for: key) { image = hit; return }
+        image = nil
+        let proxy = cache
+        let maxPx = maxPixelSize
+        let decoded: UIImage? = await Task.detached(priority: .userInitiated) {
+            guard let data = try? proxy.load(path) else { return nil }
+            return ImageDecoding.decode(data, maxPixelSize: maxPx)
+        }.value
+        if let decoded {
+            ImageMemoryCache.shared.store(decoded, for: key)
+            image = decoded
+        } else {
+            failed = true
+        }
+    }
+}
+
 /// Loads the looked image for an item.
 struct RenderedCaptureImage: View {
     var model: ShootViewModel

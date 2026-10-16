@@ -212,6 +212,11 @@ public struct CaptureStack: Identifiable, Hashable, Sendable {
     public var top: CaptureItem { items.first { $0.kind != .raw } ?? items[0] }
     public var isPair: Bool { items.count > 1 }
 
+    public init(key: String, items: [CaptureItem]) {
+        self.key = key
+        self.items = items
+    }
+
     public static func stack(_ items: [CaptureItem]) -> [CaptureStack] {
         var order = [String]()
         var groups = [String: [CaptureItem]]()

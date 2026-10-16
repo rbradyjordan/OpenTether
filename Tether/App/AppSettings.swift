@@ -37,7 +37,7 @@ final class AppSettings {
     var cloudURL: URL { URL(string: cloudBaseURL) ?? URL(string: AppSettings.defaultCloudBaseURL)! }
 
     /// Read before the settings object exists (the services need the URL first).
-    static func storedCloudURL(in store: SessionStore) -> URL {
+    nonisolated static func storedCloudURL(in store: SessionStore) -> URL {
         URL(string: store.setting(Keys.cloudBaseURL) ?? "") ?? URL(string: defaultCloudBaseURL)!
     }
 

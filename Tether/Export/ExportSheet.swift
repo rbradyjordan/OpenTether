@@ -61,10 +61,17 @@ struct ExportSheet: View {
 
     private var scopeSection: some View {
         Section("What") {
-            Picker("Scope", selection: $scope) { ForEach(presets) { s in Text(s.title).tag(s) } }
-                .pickerStyle(presets.count > 4 ? .menu : .segmented)
+            if presets.count > 4 {
+                scopePicker.pickerStyle(.menu)
+            } else {
+                scopePicker.pickerStyle(.segmented)
+            }
             if case .rated = scope { Stepper("Minimum rating: \(minRating)", value: $minRating, in: 1 ... 5) }
         }
+    }
+
+    private var scopePicker: some View {
+        Picker("Scope", selection: $scope) { ForEach(presets) { s in Text(s.title).tag(s) } }
     }
 
     private var whereSection: some View {

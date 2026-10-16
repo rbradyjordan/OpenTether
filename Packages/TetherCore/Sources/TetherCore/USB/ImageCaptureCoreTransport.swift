@@ -72,6 +72,7 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         return state
     }
 
+    #if os(iOS)
     private static func grant(_ status: ICAuthorizationStatus) -> USBAuthorizationState.Grant {
         switch status {
         case .authorized: return .granted
@@ -79,10 +80,20 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         default: return .notDetermined
         }
     }
+    #endif
 
     public func device(id: String) -> ICCameraDevice? {
         lock.lock(); defer { lock.unlock() }
         return devices[id]
+    }
+
+    /// ICC exposes the serial number on macOS only; iOS reconnects match on the other fields.
+    private static func serialNumber(of device: ICCameraDevice) -> String? {
+        #if os(macOS)
+        return device.serialNumberString
+        #else
+        return nil
+        #endif
     }
 
     private func publish() {
@@ -90,7 +101,7 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         let list = devices.values.map { d in
             USBCameraCandidate(id: d.uuidString ?? d.name ?? UUID().uuidString, name: d.name ?? "Camera",
                                usbVendorID: Int(d.usbVendorID), usbProductID: Int(d.usbProductID),
-                               serialNumber: d.serialNumberString, hasOpenSession: d.hasOpenSession)
+                               serialNumber: Self.serialNumber(of: d), hasOpenSession: d.hasOpenSession)
         }.filter { vendorFilter == nil || vendorFilter!.contains($0.vendorGuess) || $0.vendorGuess == .generic }
         lock.unlock()
         continuation.yield(.devices(list.sorted { $0.name < $1.name }))
@@ -109,7 +120,9 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         if !moreGoing { publish() }
     }
 
+    #if os(macOS)
     public func deviceBrowserDidEnumerateLocalDevices(_ browser: ICDeviceBrowser) { publish() }
+    #endif
 }
 
 /// `PTPTransport` over an open `ICCameraDevice`. Serialises transactions,
@@ -150,7 +163,7 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
 
     public func close() async {
         lock.lock(); sessionOpen = false; lock.unlock()
-        device.requestCloseSession()
+        try? await device.requestCloseSession()
     }
 
     public func execute(_ request: PTPRequest) async throws -> PTPResponse {
@@ -167,12 +180,12 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
         return try await withThrowingTaskGroup(of: PTPResponse.self) { group in
             group.addTask { [self] in
                 try await withCheckedThrowingContinuation { (cont: CheckedContinuation<PTPResponse, Error>) in
-                    device.requestSendPTPCommand(command, outData: request.dataOut) { _, dataIn, responseData, error in
+                    device.requestSendPTPCommand(command, outData: request.dataOut) { dataIn, responseData, error in
                         if let error { cont.resume(throwing: PTPError.malformed("ICC: \(error.localizedDescription)")); return }
                         do {
-                            let container = try PTPUSBContainer(parsing: responseData ?? Data())
+                            let container = try PTPUSBContainer(parsing: responseData)
                             guard var response = container.asResponse else { throw PTPError.malformed("ICC returned a non-response container") }
-                            response.dataIn = dataIn ?? Data()
+                            response.dataIn = dataIn
                             response.transactionID = tid
                             self.health.bytesIn += response.dataIn.count
                             self.health.bytesOut += command.count + (request.dataOut?.count ?? 0)
@@ -213,7 +226,8 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
     private static func describe(_ error: Error) -> String {
         let ns = error as NSError
         switch ns.code {
-        case ICReturnCodeOffset.deviceAlreadyOpen.rawValue: return "Another app has this camera open. Close it and try again."
+        // ICReturnConnectionSessionAlreadyOpen, ICLegacyReturnCodeDeviceAlreadyOpenErr
+        case -21347, -9914: return "Another app has this camera open. Close it and try again."
         default: return "Could not open the camera over USB: \(ns.localizedDescription)"
         }
     }

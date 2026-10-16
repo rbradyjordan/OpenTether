@@ -64,13 +64,3 @@ struct TestedCamerasView: View {
         .init(vendor: "Panasonic", model: "S5 II / GH6", transports: ["usb"], status: "expected", notes: "USB Mode PC(Tether)"),
     ]
 }
-
-extension TetherCloudClient.TestedCamera {
-    init(vendor: String, model: String, transports: [String], status: String, notes: String) {
-        self.vendor = vendor
-        self.model = model
-        self.transports = transports
-        self.status = status
-        self.notes = notes
-    }
-}

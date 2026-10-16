@@ -132,7 +132,8 @@ final class StreamWire: NSObject, FTPWire, StreamDelegate, @unchecked Sendable {
 
     var localHost: String? {
         // CFStream exposes the native socket handle; read its local address.
-        guard let handleData = input.property(forKey: Stream.PropertyKey(kCFStreamPropertySocketNativeHandle as String)) as? Data else { return nil }
+        let key = Stream.PropertyKey(CFStreamPropertyKey.socketNativeHandle.rawValue as String)
+        guard let handleData = input.property(forKey: key) as? Data else { return nil }
         var fd: Int32 = -1
         _ = withUnsafeMutableBytes(of: &fd) { handleData.copyBytes(to: $0) }
         guard fd >= 0 else { return nil }
