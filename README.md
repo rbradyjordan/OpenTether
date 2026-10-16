@@ -47,6 +47,13 @@ Nothing has touched a real camera. Every vendor opcode or property code that
 was not certain is marked `// VERIFY` in the vendor's single code table, so
 the first live session with each brand is a one-file fix.
 
+## Design
+
+`docs/DESIGN.md` is the design system (tokens, type, motion, haptics, signature
+moments). `docs/prototype.html` is an interactive mock of the shoot screen,
+connect flow, client review and export built from those tokens; open it in a
+browser to feel the interactions before building in Xcode.
+
 ## Build and test
 
 ```sh
