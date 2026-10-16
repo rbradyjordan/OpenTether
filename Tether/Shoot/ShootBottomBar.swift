@@ -5,6 +5,7 @@ import TetherCore
 /// capture ring centred with Looks and Export beside it and everything
 /// secondary in one trailing menu.
 struct ShootBottomBar: View {
+    @Environment(AppModel.self) private var app
     @Bindable var model: ShootViewModel
 
     var body: some View {
@@ -63,27 +64,25 @@ struct ShootBottomBar: View {
         }
     }
 
+    /// Everything secondary, generated from the shared command list for the
+    /// displayed frame (compare uses the previous frame as the other half).
     private var secondaryMenu: some View {
         Menu {
-            Button { model.sheet = .compare } label: { Label("Compare", systemImage: "rectangle.split.2x1") }
-                .disabled(model.readyItems.count < 2)
-            Button { model.showClientReview = true } label: { Label("Client review", systemImage: "person.crop.rectangle") }
-                .disabled(model.readyItems.isEmpty)
-            if let item = model.displayedItem {
-                Menu {
-                    ForEach(TetherCoreColorLabel.allCases) { label in
-                        Button {
-                            model.label(item.id, label)
-                        } label: {
-                            Label(label == .none ? "Clear label" : label.rawValue.capitalized,
-                                  systemImage: item.colorLabel == label ? "checkmark.circle.fill" : "circle.fill")
-                        }
-                    }
-                } label: {
-                    Label("Colour label", systemImage: "tag")
-                }
+            if model.readyItems.count >= 2 {
+                Button { model.sheet = .compare } label: { Label("Compare", systemImage: "rectangle.split.2x1") }
+            }
+            if !model.readyItems.isEmpty {
+                Button { model.showClientReview = true } label: { Label("Client review", systemImage: "person.crop.rectangle") }
             }
             Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+            Divider()
+            let ids = model.displayedItem.map { [$0.id] } ?? []
+            CommandMenuContent(commands: app.commands.available(selection: ids, inShoot: true),
+                               exclude: ["select.", "view.", "camera.", "session.", "export.again", "flag.", "rate."]) { cmd in
+                app.commands.preferShootSurface = true
+                app.commands.run(cmd, on: ids)
+                app.commands.preferShootSurface = false
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 20, weight: .semibold))

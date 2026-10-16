@@ -7,12 +7,14 @@ struct ShootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: ShootViewModel
     @State private var showEndConfirm = false
+    @State private var showImporter = false
 
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
                 VStack(spacing: 0) {
-                    ShootHeader(model: model, showEndConfirm: $showEndConfirm)
+                    ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter)
+                    if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
                     canvas
                     ExposureBarView(model: model)
                     FilmstripView(model: model)
@@ -27,6 +29,9 @@ struct ShootView: View {
             .sheet(item: $model.sheet) { sheet in sheetView(sheet) }
             .fullScreenCover(isPresented: $model.showClientReview) { ClientReviewView(model: model) }
             .fullScreenCover(isPresented: $model.showLoupe) { LoupeView(model: model) }
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image, .rawImage, .movie, .data], allowsMultipleSelection: true) { result in
+                if case .success(let urls) = result { model.importFiles(urls) }
+            }
             .confirmationDialog("End this session?", isPresented: $showEndConfirm, titleVisibility: .visible) {
                 Button("End session", role: .destructive) { Task { await app.endShoot() } }
                 Button("Keep shooting", role: .cancel) {}
@@ -69,14 +74,17 @@ struct ShootView: View {
         case .reconnect: ReconnectView(model: model)
         case .newSession: NewSessionSheet()
         case .diagnostics: ShootDiagnosticsSheet(model: model)
+        case .addToCollection: CollectionPickerSheet(ids: model.displayedItem.map { [$0.id] } ?? [])
         }
     }
 }
 
 /// Status pill (tap → diagnostics) and the session menu.
 private struct ShootHeader: View {
+    @Environment(AppModel.self) private var app
     @Bindable var model: ShootViewModel
     @Binding var showEndConfirm: Bool
+    @Binding var showImporter: Bool
 
     var body: some View {
         HStack(spacing: TetherSpace.s) {
@@ -87,10 +95,15 @@ private struct ShootHeader: View {
             Spacer(minLength: TetherSpace.xs)
             Menu {
                 Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+                Button { showImporter = true } label: { Label("Import files…", systemImage: "square.and.arrow.down") }
                 if model.isDisconnected {
                     Button { model.sheet = .reconnect } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
                 }
-                Button(role: .destructive) { showEndConfirm = true } label: { Label("End session", systemImage: "stop.circle") }
+                Divider()
+                // Session commands (save as template, end) come from the shared command list.
+                CommandMenuContent(commands: app.commands.available(selection: [], inShoot: true).filter { $0.group == .session }) { cmd in
+                    if cmd.id == "session.end" { showEndConfirm = true } else { app.commands.run(cmd, on: []) }
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 20, weight: .medium))
@@ -129,6 +142,33 @@ private struct ShootHeader: View {
         case .ftpPush?: return "arrow.down.doc"
         case nil: return nil
         }
+    }
+}
+
+/// One line under the header: "Use last time's look Film Warm? Yes / No".
+private struct RestoreOfferBanner: View {
+    @Environment(AppModel.self) private var app
+    @Bindable var model: ShootViewModel
+
+    private var lookName: String {
+        guard let id = model.restoreOffer?.look.lookID else { return "look" }
+        return app.looks.first { $0.id == id }?.name ?? "look"
+    }
+
+    var body: some View {
+        HStack(spacing: TetherSpace.m) {
+            Image(systemName: "camera.filters").foregroundStyle(TetherColor.accent)
+            Text("Use last time's look \(lookName)?").font(TetherFont.callout).foregroundStyle(TetherColor.ink0).lineLimit(1)
+            Spacer(minLength: 0)
+            Button("Yes") { model.acceptRestoreOffer() }.font(TetherFont.callout.weight(.semibold)).frame(minHeight: TetherHit.min)
+            Button("No") { model.declineRestoreOffer() }.font(TetherFont.callout).foregroundStyle(TetherColor.ink1).frame(minHeight: TetherHit.min)
+        }
+        .padding(.horizontal, TetherSpace.l)
+        .background(TetherColor.surface2)
+        .overlay(alignment: .bottom) { Rectangle().fill(TetherColor.hairline).frame(height: 0.5) }
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+        .overlayTypeCap()
     }
 }
 

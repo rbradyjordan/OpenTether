@@ -9,6 +9,7 @@ struct InspectorView: View {
     @State private var tags: [String] = []
     @State private var memberships: [String] = []
     @State private var history: [(destination: String, at: Date, remoteID: String?)] = []
+    @State private var exif: EXIFSummary?
 
     private var item: CaptureItem? { model.inspectedItem }
     private var ids: [String] { model.selection.isEmpty ? (item.map { [$0.id] } ?? []) : model.selection.ids }
@@ -21,7 +22,7 @@ struct InspectorView: View {
                     if model.selection.count > 1 {
                         Text("\(model.selection.count) selected · showing \(item.filename)").font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
                     }
-                    InspectorFacts(item: item, session: model.sessions.first { $0.id == item.sessionID }, camera: model.cameras.first { $0.id == item.cameraID }, look: app.looks.first { $0.id == item.lookID })
+                    InspectorFacts(item: item, session: model.sessions.first { $0.id == item.sessionID }, camera: model.cameras.first { $0.id == item.cameraID }, look: app.looks.first { $0.id == item.lookID }, exif: exif)
                     reviewCard(item)
                     SectionCard(title: "Tags", systemImage: "number") { TagEditor(tags: tags, suggestions: model.tagSuggestions(prefix:), onAdd: addTag, onRemove: removeTag) }
                     collectionsCard
@@ -105,10 +106,13 @@ struct InspectorView: View {
     }
 
     private func refresh() {
-        guard let id = item?.id else { tags = []; memberships = []; history = []; return }
+        guard let id = item?.id else { tags = []; memberships = []; history = []; exif = nil; return }
         tags = model.tags(for: id)
         memberships = model.collectionIDs(containing: id)
         history = model.exportHistory(for: id)
+        exif = nil
+        // EXIF comes from the file itself; JPEG/HEIF originals or the RAW's proxy.
+        if let path = item?.previewRelativePath, let data = try? app.cache.load(path) { exif = try? EXIFReader.read(data) }
     }
 
     private func addTag(_ t: String) { app.commands.addTags([t], to: ids); tags = Array(Set(tags + [t])).sorted() }
@@ -121,13 +125,17 @@ struct InspectorFacts: View {
     var session: ShootSession?
     var camera: CameraIdentity?
     var look: LookDescriptor?
+    var exif: EXIFSummary?
 
     var body: some View {
         SectionCard(title: nil) {
             Text(item.filename).font(TetherFont.headline).foregroundStyle(TetherColor.ink0).lineLimit(1)
             fact("Session", session?.name ?? "—")
-            fact("Camera", camera?.displayName ?? "—")
+            fact("Camera", camera?.displayName ?? (exif?.cameraLine.isEmpty == false ? exif!.cameraLine : "—"))
+            if let lens = exif?.lens, !lens.isEmpty { fact("Lens", lens) }
             if let line = item.exposure?.line, !line.isEmpty { fact("Exposure", line) }
+            else if let line = exif?.exposureLine, !line.isEmpty { fact("Exposure", line) }
+            if let shot = exif?.dateTimeOriginal { fact("EXIF time", shot.formatted(date: .abbreviated, time: .standard)) }
             fact("Size", "\(item.width) × \(item.height) · \(ByteCountFormatter.string(fromByteCount: Int64(item.bytes), countStyle: .file))")
             fact("Captured", item.capturedAt.formatted(date: .abbreviated, time: .standard))
             fact("Look", look?.name ?? (item.lookID == nil ? "None" : "Applied"))

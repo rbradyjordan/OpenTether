@@ -12,6 +12,7 @@ struct HomeView: View {
         ScrollView {
             LazyVStack(spacing: TetherSpace.m) {
                 ForEach(app.interrupted) { s in ResumeBanner(session: s) }
+                ContinueCard()
                 if app.sessions.isEmpty {
                     EmptyState(systemImage: "rectangle.stack", title: "No sessions yet",
                                message: "A session groups one shoot's frames, ratings and exports.",
@@ -62,5 +63,62 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// "Continue where you left off": the last library view, plus "Export like
+/// last time" with the remembered destination and scope.
+struct ContinueCard: View {
+    @Environment(AppModel.self) private var app
+
+    private var lastKey: String { app.memory.get(WorkspaceMemory.lastCollectionID) }
+    private var source: LibraryModel.Source { .from(memoryKey: lastKey) }
+    private var state: WorkspaceMemory.ViewState { app.memory.viewState(for: lastKey) }
+    private var title: String {
+        switch source {
+        case .collection(let id): return app.library.collection(id)?.name ?? "All photos"
+        case .session(let id): return app.sessions.first { $0.id == id }?.name ?? "Session"
+        case .camera(let id): return app.library.cameras.first { $0.id == id }?.displayName ?? "Camera"
+        }
+    }
+    private var lastExport: WorkspaceMemory.ExportMemory { app.memory.get(WorkspaceMemory.lastExport) }
+
+    var body: some View {
+        if app.library.count(for: source) > 0 {
+            SectionCard(title: "Continue where you left off", systemImage: "arrow.uturn.forward") {
+                Button { open() } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(title).font(TetherFont.headline).foregroundStyle(TetherColor.ink0)
+                            Text("\(app.library.count(for: source)) photos · \(state.filter.summary) · \(state.sort.displayName) · \(GridMath.zoomTitle(state.columns))")
+                                .font(TetherFont.hud).foregroundStyle(TetherColor.ink1).lineLimit(2)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(TetherColor.ink2)
+                    }
+                    .frame(minHeight: TetherHit.min)
+                }
+                .buttonStyle(.plain)
+                Button { exportLikeLastTime() } label: {
+                    Label("Export like last time · \(lastExport.destination.displayName)", systemImage: "arrow.uturn.up")
+                        .frame(minHeight: TetherHit.min)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Exports this view's \(lastExport.scope) with the remembered settings")
+            }
+        }
+    }
+
+    private func open() {
+        app.library.select(source)
+        app.selectedTab = .library
+    }
+
+    /// Uses the remembered scope over the last view: picks, rated, or everything.
+    private func exportLikeLastTime() {
+        app.library.select(source)
+        let scope = ExportScope.from(memory: lastExport.scope, selectionCount: 0, inCollection: true) ?? .all
+        let ids = scope.filter(app.library.items, selectedID: nil).map(\.id)
+        app.commands.exportAgain(ids)
     }
 }

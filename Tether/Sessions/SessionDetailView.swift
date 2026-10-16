@@ -13,6 +13,8 @@ struct SessionDetailView: View {
     @State private var showLoupe = false
     @State private var renaming = false
     @State private var newName = ""
+    @State private var templateDraft: WorkspaceMemory.SessionTemplate?
+    @State private var manifestURLs: [URL]?
 
     var body: some View {
         ScrollView {
@@ -60,8 +62,19 @@ struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { newName = session?.name ?? ""; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+                Menu {
+                    Button { newName = session?.name ?? ""; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+                    if let session {
+                        Button { templateDraft = app.memory.template(from: session, name: session.name) } label: { Label("Save as template", systemImage: "doc.badge.plus") }
+                        Button { shareManifest(session) } label: { Label("Share manifest", systemImage: "doc.text") }
+                        Button { app.library.select(.session(session.id)); app.selectedTab = .library } label: { Label("Open in Library", systemImage: "photo.on.rectangle.angled") }
+                    }
+                } label: { Label("More", systemImage: "ellipsis.circle") }
             }
+        }
+        .sheet(item: $templateDraft) { t in TemplateEditor(template: t, isNew: true) }
+        .sheet(isPresented: Binding(get: { manifestURLs != nil }, set: { if !$0 { manifestURLs = nil } })) {
+            if let urls = manifestURLs { ShareSheet(items: urls) }
         }
         .alert("Rename session", isPresented: $renaming) {
             TextField("Name", text: $newName)
@@ -86,6 +99,28 @@ struct SessionDetailView: View {
     private func load() {
         session = try? app.store.session(sessionID)
         items = (try? app.store.captures(in: sessionID)) ?? []
+    }
+
+    /// JSON + CSV manifest of the session (files, ratings, tags, collections) to the share sheet.
+    private func shareManifest(_ session: ShootSession) {
+        var tags: [String: [String]] = [:]
+        var collections: [String: [String]] = [:]
+        let names = Dictionary(uniqueKeysWithValues: app.library.collections.map { ($0.id, $0.name) })
+        for item in items {
+            tags[item.id] = (try? app.store.tags(for: item.id)) ?? []
+            collections[item.id] = ((try? app.store.collectionIDs(containing: item.id)) ?? []).compactMap { names[$0] }
+        }
+        let manifest = SessionManifest(session: session, captures: items, tags: tags, collections: collections)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("manifest-\(session.directoryName)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let base = session.name.components(separatedBy: CharacterSet(charactersIn: "/\\:")).joined(separator: "-")
+        let json = dir.appendingPathComponent("\(base).json")
+        let csv = dir.appendingPathComponent("\(base).csv")
+        do {
+            try manifest.json().write(to: json)
+            try manifest.csv().write(to: csv, atomically: true, encoding: .utf8)
+            manifestURLs = [json, csv]
+        } catch { app.toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle") }
     }
 }
 

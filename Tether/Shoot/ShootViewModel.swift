@@ -270,6 +270,23 @@ final class ShootViewModel {
         Task { await session.rename(name) }
     }
 
+    /// Files / share-sheet import: copy out of the security scope, then ingest
+    /// like an FTP push (XMP sidecars and embedded packets are adopted there).
+    func importFiles(_ urls: [URL]) {
+        Task {
+            for url in urls {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+                try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+                let copy = tmp.appendingPathComponent(url.lastPathComponent)
+                do { try FileManager.default.copyItem(at: url, to: copy) } catch { toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle"); continue }
+                await session.ingestFile(at: copy, from: "Files")
+            }
+            toast = ToastMessage(text: "Imported \(urls.count) file\(urls.count == 1 ? "" : "s")", systemImage: "square.and.arrow.down")
+        }
+    }
+
     func ingestFTPFile(_ url: URL, from: String) async {
         guard context == .ftp || shootSession.transport == .ftpPush else { return }
         await session.ingestFile(at: url, from: from)

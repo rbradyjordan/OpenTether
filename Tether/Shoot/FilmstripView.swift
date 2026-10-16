@@ -5,6 +5,7 @@ import TetherCore
 /// scale with a download ring; with "Keep selection" on, a count badge
 /// increments instead of the canvas changing.
 struct FilmstripView: View {
+    @Environment(AppModel.self) private var app
     var model: ShootViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -17,6 +18,13 @@ struct FilmstripView: View {
                                       pairCount: model.pairCount(for: item), cache: model.renderCache.proxyCache)
                             .id(item.id)
                             .onTapGesture { model.select(item.id) }
+                            .contextMenu {
+                                CommandMenuContent(commands: app.commands.available(selection: [item.id], inShoot: true), exclude: ["select.", "camera.", "session."]) { cmd in
+                                    app.commands.preferShootSurface = true
+                                    app.commands.run(cmd, on: [item.id])
+                                    app.commands.preferShootSurface = false
+                                }
+                            }
                             .transition(arrival)
                     }
                 }
