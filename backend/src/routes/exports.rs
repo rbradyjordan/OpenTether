@@ -44,6 +44,10 @@ pub struct CreateBatchBody {
     #[serde(default)]
     pub look_id: Option<String>,
     pub items: Vec<BatchItemReq>,
+    /// Optional session manifest (any JSON) written into the zip as
+    /// `manifest.json` so the download carries ratings, tags and names.
+    #[serde(default)]
+    pub manifest: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -207,6 +211,17 @@ pub async fn create_batch(
         c.execute("UPDATE accounts SET credits = ?2 WHERE id = ?1", params![account_id, balance])?;
         Ok((out, charged, balance))
     })?;
+    if let Some(manifest) = &body.manifest {
+        let dir = batch_dir(&state, &batch_id);
+        tokio::fs::create_dir_all(&dir).await?;
+        tokio::fs::write(
+            dir.join("manifest.json"),
+            serde_json::to_vec_pretty(manifest)
+                .map_err(|e| AppError::internal(format!("manifest: {e}")))?,
+        )
+        .await?;
+    }
+
     tokio::fs::create_dir_all(batch_dir(&state, &batch_id)).await?;
     tracing::info!(account = %acct.id, batch = %batch_id, items = items.len(), charged, "export batch created");
     Ok(Json(CreateBatchResponse {
@@ -551,6 +566,14 @@ fn build_zip(dir: &FsPath, items: &[ItemRow], out: &FsPath) -> Result<(), AppErr
         .compression_method(zip::CompressionMethod::Stored)
         .large_file(true);
     let mut used = std::collections::HashSet::new();
+    let manifest = dir.join("manifest.json");
+    if manifest.is_file() {
+        used.insert("manifest.json".to_string());
+        zip.start_file("manifest.json", opts)
+            .map_err(|e| AppError::internal(format!("zip: {e}")))?;
+        let mut src = std::fs::File::open(&manifest)?;
+        std::io::copy(&mut src, &mut zip)?;
+    }
     for item in items {
         if item.bytes_stored.is_none() {
             continue;

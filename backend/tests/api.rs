@@ -544,6 +544,7 @@ async fn export_batch_credits_watermark_upload_and_zip() {
         Some(&token),
         json!({
             "session_name": "Studio Day",
+            "manifest": {"generator": "Tether", "rows": [{"filename": "IMG_0001.jpg", "rating": 5}]},
             "watermark": false,
             "look_id": "film-warm",
             "items": [
@@ -697,7 +698,7 @@ async fn export_batch_credits_watermark_upload_and_zip() {
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.headers[header::CONTENT_TYPE], "application/zip");
     let mut archive = zip::ZipArchive::new(Cursor::new(r.body.clone())).unwrap();
-    assert_eq!(archive.len(), 4);
+    assert_eq!(archive.len(), 5);
     let mut names: Vec<String> = (0..archive.len())
         .map(|i| archive.by_index(i).unwrap().name().unwrap().to_string())
         .collect();
@@ -708,9 +709,17 @@ async fn export_batch_credits_watermark_upload_and_zip() {
             "IMG_0001.CR3",
             "IMG_0001.jpg",
             "IMG_0002.jpg",
-            "IMG_0003.jpg"
+            "IMG_0003.jpg",
+            "manifest.json"
         ]
     );
+    {
+        let mut f = archive.by_name("manifest.json").unwrap();
+        let mut data = String::new();
+        f.read_to_string(&mut data).unwrap();
+        let m: serde_json::Value = serde_json::from_str(&data).unwrap();
+        assert_eq!(m["rows"][0]["rating"], 5);
+    }
     {
         let mut f = archive.by_name("IMG_0001.jpg").unwrap();
         assert_eq!(f.compression(), zip::CompressionMethod::Stored);
