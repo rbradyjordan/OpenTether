@@ -59,5 +59,14 @@ struct TestedCamerasView: View {
         .init(vendor: "Leica", model: "SL2 / Q3 / M11", transports: ["usb"], status: "expected", notes: "USB mode PTP"),
         .init(vendor: "OM System", model: "OM-1 / OM-5", transports: ["usb"], status: "expected", notes: "PC (Tether) mode"),
         .init(vendor: "Panasonic", model: "S5 II / GH6", transports: ["usb"], status: "expected", notes: "USB Mode PC(Tether)"),
+        .init(vendor: "Pentax", model: "K-1 II / K-3 III / KP", transports: ["usb"], status: "expected", notes: "USB Connection: PTP; import, capture if offered"),
+        .init(vendor: "Sigma", model: "fp / fp L / BF", transports: ["usb"], status: "expected", notes: "USB Mode: Camera Control"),
+        .init(vendor: "Hasselblad", model: "X2D / X1D II / 907X", transports: ["usb"], status: "expected", notes: "USB: PTP; import"),
+        .init(vendor: "GoPro", model: "HERO9 – HERO13", transports: ["wifi"], status: "expected", notes: "Open GoPro API; photo mode"),
+        .init(vendor: "Ricoh", model: "Theta X / Z1 / SC2", transports: ["wifi"], status: "expected", notes: "Open Spherical Camera API"),
+        .init(vendor: "Insta360", model: "OSC-capable bodies", transports: ["wifi"], status: "expected", notes: "Open Spherical Camera API"),
+        .init(vendor: "Canon", model: "PowerShot (G series)", transports: ["usb"], status: "expected", notes: "Import as you shoot"),
+        .init(vendor: "Sony", model: "RX100 / RX10 / ZV (not PC Remote)", transports: ["usb"], status: "expected", notes: "Import as you shoot; PC Remote for control"),
+        .init(vendor: "Any brand", model: "PTP over USB", transports: ["usb"], status: "expected", notes: "Import as you shoot"),
     ]
 }

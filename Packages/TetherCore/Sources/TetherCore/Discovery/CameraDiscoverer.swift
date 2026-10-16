@@ -16,9 +16,10 @@ public final class CameraDiscoverer: CameraDiscovering, @unchecked Sendable {
     private var running = false
     private var errors: [String: String] = [:]
 
-    /// Default sources: SSDP (Sony), Bonjour (Canon/Nikon/…), Fuji dial-back, Ricoh probe.
+    /// Default sources: SSDP (Sony), Bonjour (Canon/Nikon/…), Fuji dial-back,
+    /// and probes of the fixed addresses Ricoh GR, GoPro and OSC 360° cameras use.
     public convenience init(expiry: TimeInterval = 30) {
-        self.init(sources: [SSDPDiscoverer(), BonjourDiscoverer(), FujiDiscoverer(), RicohProbe()], expiry: expiry)
+        self.init(sources: [SSDPDiscoverer(), BonjourDiscoverer(), FujiDiscoverer(), RicohProbe(), HTTPCameraProbe()], expiry: expiry)
     }
 
     public init(sources: [CameraDiscovering], expiry: TimeInterval = 30, sweepInterval: TimeInterval = 5) {
@@ -78,7 +79,7 @@ public final class CameraDiscoverer: CameraDiscovering, @unchecked Sendable {
 
     /// Adds (or refreshes) a user-entered camera. Manual entries never expire.
     public func addManual(host: String, port: UInt16 = PTPIPPacket.standardPort, vendor: CameraVendor?, name: String? = nil) {
-        let transport: TransportKind = vendor == .ricoh ? .ricohHTTP : .ptpip
+        let transport: TransportKind = vendor == .ricoh ? .ricohHTTP : (vendor == .gopro || vendor == .osc ? .http : .ptpip)
         let cam = DiscoveredCamera(id: "manual:\(host):\(port)", name: name ?? vendor?.displayName ?? host, vendor: vendor,
                                    host: host, port: port, method: .manual, transport: transport, lastSeen: Date(),
                                    details: ["controllable": String(vendor?.supportsWirelessControl ?? false)])

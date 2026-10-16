@@ -60,9 +60,12 @@ Names come from a `NamingTemplate` with the tokens pros expect:
 ## What comes in
 
 Files pushed over FTP or imported from Files bring their metadata with
-them: a sidecar `.xmp` next to the file, or the embedded packet in a JPEG,
-seeds the rating, flag, label and tags in the library (and the sidecar is
-consumed). Lightroom, Capture One and Photo Mechanic output all parse,
+them: a sidecar `.xmp` next to the file (`IMG.xmp` or `IMG.CR3.xmp`), or the
+embedded packet in a JPEG, seeds the rating, flag, label and tags in the
+library. Over FTP a sidecar may arrive before or after its photo: it is
+applied to the frame (and its RAW/JPEG twin) either way, never imported as a
+frame. Files imported from the Files app are copied; the source folder is
+never changed. Lightroom, Capture One and Photo Mechanic output all parse,
 including attribute-style XMP.
 
 EXIF is read for the inspector and manifest (make, model, lens, exposure,
@@ -73,16 +76,52 @@ from the JPEG or the RAW's TIFF header.
 
 - **Photos**: JPEGs with embedded XMP (Photos keeps the packet; Lightroom
   reads it when importing from Photos).
-- **Files**: any layout above, with sidecars and manifests. iCloud Drive,
-  SMB shares and external SSDs are all Files locations.
+- **Files**: any layout above, with sidecars and manifests, into "On My
+  iPhone › Open Tether" or a **saved folder** picked anywhere in Files
+  (iCloud Drive, a server under Connect to Server, a USB-C drive). Saved
+  folders are security-scoped bookmarks; writes are coordinated and atomic
+  (a hidden temporary name, then moved into place) and replace earlier
+  copies instead of adding "-1" duplicates.
+- **Hot folder**: a session can copy every frame into a saved folder the
+  moment it lands (originals, camera names, sidecar first). Rating, picking
+  or labelling on the phone rewrites the sidecar there.
+- **Capture One session**: pick the session's root folder (the one holding
+  the `.cosessiondb`); exports and the hot folder write straight into its
+  Capture / Selects / Trash folders (manifests to Output), creating any that
+  are missing.
+- **Lightroom Classic Auto Import**: mark a saved folder as an Auto Import
+  folder; files go in flat, each sidecar written before its photo.
 - **FTP / FTPS**: same tree on the server; Capture One and Lightroom watch
   folders pick it up.
-- **Cloud batch**: a ZIP of the files; the manifest describes them.
 - **Share sheet**: hands a rendered JPEG to any app (Lightroom, Capture One
   for iPad, Photoshop Express, Slack).
 
+## RAW
+
+RAW originals are never altered. RAW+JPEG twins keep one base name on
+export (whatever the naming pattern: the pair's first sequence number is
+used) and get one sidecar, the RAW's, so Lightroom and Capture One re-stack
+them. RAW can instead be exported developed (Core Image `CIRAWFilter`,
+as-shot white balance) to JPEG (with embedded XMP), HEIF or 16-bit TIFF,
+with the look and resize applied.
+
+## Reading catalogs back
+
+"Sync ratings from a catalog…" (Library) or opening a catalog from Files
+reads a **Lightroom Classic** `.lrcat` (`Adobe_images` rating / pick /
+colour label, `AgLibraryFile` names, keywords) or a **Capture One** catalog
+or session database (rating and colour tag; the schema is probed, so this is
+marked experimental). The catalog and its `-wal` journal are copied to a
+private folder and read from there: the original is never opened, locked or
+written, and edits the desktop app has not checkpointed yet are included.
+Frames match by camera file name or by any name they were exported under.
+The sheet shows what would change; applying it is one undoable edit per
+kind. Capture One's orange and pink tags have no equivalent and are left
+alone.
+
 ## Not done, on purpose
 
-No Lightroom catalog (`.lrcat`) writing, no Capture One `.cosessiondb`
-writing: both are undocumented databases that break across versions. The
-sidecar/embedded route is what both vendors support for third parties.
+No writing into a Lightroom catalog (`.lrcat`) or a Capture One catalog or
+`.cosessiondb`: both are undocumented databases the desktop app keeps open
+and migrates between versions. The sidecar / embedded / watched-folder route
+is what both vendors support for third parties, and catalogs are only read.

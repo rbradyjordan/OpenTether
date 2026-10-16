@@ -85,18 +85,26 @@ public extension VendorHandler {
 }
 
 /// Generic PTP: watch for ObjectAdded, download, and InitiateCapture when the
-/// camera advertises it. This is the safe baseline for every unknown body
-/// (and for Hasselblad, which we treat as RAW-decode only).
+/// camera advertises it. This is the safe baseline for every brand without
+/// a dedicated handler (Hasselblad, Sigma, Pentax, Samsung, compacts) and for
+/// bodies whose vendor mode is off: new files are found from the camera's
+/// own events and, as a safety net, by polling the card.
 public final class GenericPTPHandler: VendorHandler, @unchecked Sendable {
     public let engine: PTPEngine
     public let info: PTPDeviceInfo
     public let vendor: CameraVendor
     public let capabilities: CameraCapabilities
     private var propTypes: [PTPDevicePropCode: PTPDataType] = [:]
+    private let differ = ObjectHandleDiffer()
+    /// Shown once on connect, e.g. "set USB mode to PC Remote for full control".
+    private var setupHint: String?
 
-    public init(engine: PTPEngine, info: PTPDeviceInfo) {
+    public var eventPollInterval: TimeInterval { 1.5 }
+
+    public init(engine: PTPEngine, info: PTPDeviceInfo, setupHint: String? = nil) {
         self.engine = engine
         self.info = info
+        self.setupHint = setupHint
         self.vendor = CameraVendor.detect(info)
         var caps: CameraCapabilities = [.eventPush, .importOnly]
         if info.supports(.initiateCapture) { caps.insert(.remoteCapture); caps.insert(.cardCapture); caps.remove(.importOnly) }
@@ -106,8 +114,20 @@ public final class GenericPTPHandler: VendorHandler, @unchecked Sendable {
         self.capabilities = caps
     }
 
-    public func prepare() async throws {}
+    public func prepare() async throws {
+        if info.supports(.getObjectHandles) { await differ.seed(engine: engine) }
+    }
+
     public func teardown() async {}
+
+    /// Card polling catches bodies that never send ObjectAdded; duplicates of
+    /// pushed events are dropped by the session.
+    public func pollEvents() async throws -> [CameraEvent] {
+        var out: [CameraEvent] = []
+        if let hint = setupHint { out.append(.warning(hint)); setupHint = nil }
+        if info.supports(.getObjectHandles), differ.isSeeded { out += try await differ.poll(engine: engine) }
+        return out
+    }
 
     public func setCaptureDestination(_ destination: CaptureDestination) async throws {
         if destination != .card { throw PTPError.unsupported("This camera can only capture to its card.") }
@@ -245,11 +265,29 @@ public enum VendorRegistry {
         lock.lock()
         let factory = factories[vendor]
         lock.unlock()
-        // Hasselblad is RAW-decode only; wireless control is limited to the
-        // brands whose protocols we ship.
-        if vendor == .hasselblad { return GenericPTPHandler(engine: engine, info: info) }
+        // Brands without a dedicated handler (Hasselblad, Sigma, Pentax,
+        // Samsung…) get the generic one: capture when the body offers
+        // InitiateCapture, import otherwise. Wireless control is limited to
+        // the brands whose protocols we ship.
         if transport == .ptpip, !vendor.supportsWirelessControl { return GenericPTPHandler(engine: engine, info: info) }
+        // A body whose vendor control mode is off (or a compact without it)
+        // still imports, with a hint, instead of refusing to connect.
+        if let hint = vendorModeHint(vendor: vendor, info: info) {
+            return GenericPTPHandler(engine: engine, info: info, setupHint: hint)
+        }
         return factory?(engine, info) ?? GenericPTPHandler(engine: engine, info: info)
+    }
+
+    /// Nil when the vendor's control gate is available.
+    static func vendorModeHint(vendor: CameraVendor, info: PTPDeviceInfo) -> String? {
+        switch vendor {
+        case .canon where !info.supports(CanonCodes.Op.setRemoteMode):
+            return "This Canon offers import only over this connection. Photos you take arrive automatically."
+        case .sony where !info.supports(SonyCodes.Op.sdioConnect):
+            return "Importing only. For remote control set USB Connection to PC Remote on the camera and reconnect."
+        default:
+            return nil
+        }
     }
 
     public static var registered: [CameraVendor] {

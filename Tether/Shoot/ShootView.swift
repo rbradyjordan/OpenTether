@@ -138,7 +138,7 @@ private struct ShootHeader: View {
     private var transportSymbol: String? {
         switch model.identity?.transport ?? model.shootSession.transport {
         case .usb?: return "cable.connector"
-        case .ptpip?, .ricohHTTP?: return "wifi"
+        case .ptpip?, .ricohHTTP?, .http?: return "wifi"
         case .ftpPush?: return "arrow.down.doc"
         case nil: return nil
         }

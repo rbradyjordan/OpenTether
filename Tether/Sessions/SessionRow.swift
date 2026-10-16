@@ -47,7 +47,7 @@ struct SessionCard: View {
     private var icon: String {
         switch session.transport {
         case .usb?: return "cable.connector"
-        case .ptpip?, .ricohHTTP?: return "wifi"
+        case .ptpip?, .ricohHTTP?, .http?: return "wifi"
         case .ftpPush?: return "arrow.down.doc"
         case nil: return "rectangle.stack"
         }

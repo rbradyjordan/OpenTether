@@ -13,7 +13,7 @@ enum ConnectStep: Int, CaseIterable, Comparable, Sendable {
         switch transport {
         case .ptpip: return allCases
         case .usb: return [.link, .session, .deviceInfo, .vendorGate, .ready]
-        case .ricohHTTP: return [.link, .deviceInfo, .vendorGate, .ready]
+        case .ricohHTTP, .http: return [.link, .deviceInfo, .vendorGate, .ready]
         case .ftpPush: return [.link, .ready]
         }
     }
@@ -22,7 +22,7 @@ enum ConnectStep: Int, CaseIterable, Comparable, Sendable {
         switch (self, transport) {
         case (.link, .ptpip): return "TCP connection"
         case (.link, .usb): return "USB session"
-        case (.link, .ricohHTTP): return "HTTP reachable"
+        case (.link, .ricohHTTP), (.link, .http): return "Camera reachable over Wi-Fi"
         case (.link, .ftpPush): return "FTP server listening"
         case (.initCommand, _): return "InitCommand handshake"
         case (.initEvent, _): return "Event channel"

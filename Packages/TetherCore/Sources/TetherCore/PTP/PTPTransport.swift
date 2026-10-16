@@ -6,6 +6,7 @@ public enum TransportKind: String, Codable, Sendable, CaseIterable {
     case ptpip      // in-house PTP/IP over TCP
     case ricohHTTP  // Ricoh GR / Theta HTTP + WebSocket controller
     case ftpPush    // camera pushes files to the on-device FTP server
+    case http       // GoPro / Open Spherical Camera HTTP APIs on the camera's Wi-Fi
 
     public var displayName: String {
         switch self {
@@ -13,6 +14,7 @@ public enum TransportKind: String, Codable, Sendable, CaseIterable {
         case .ptpip: return "Wi-Fi (PTP/IP)"
         case .ricohHTTP: return "Wi-Fi (Ricoh)"
         case .ftpPush: return "FTP push"
+        case .http: return "Wi-Fi"
         }
     }
 }

@@ -2,6 +2,12 @@ import Foundation
 
 public enum CameraVendor: String, Codable, Sendable, CaseIterable, Identifiable {
     case canon, nikon, sony, fujifilm, ricoh, leica, olympus, panasonic, hasselblad, generic
+    case pentax, sigma, samsung
+    /// GoPro HERO (Open GoPro HTTP API over the camera's Wi-Fi).
+    case gopro
+    /// 360° cameras speaking Google's Open Spherical Camera API: Ricoh
+    /// Theta, Insta360 and others.
+    case osc
 
     public var id: String { rawValue }
 
@@ -16,6 +22,11 @@ public enum CameraVendor: String, Codable, Sendable, CaseIterable, Identifiable 
         case .olympus: return "OM System / Olympus"
         case .panasonic: return "Panasonic Lumix"
         case .hasselblad: return "Hasselblad"
+        case .pentax: return "Pentax"
+        case .sigma: return "Sigma"
+        case .samsung: return "Samsung NX"
+        case .gopro: return "GoPro"
+        case .osc: return "360° camera (Theta, Insta360…)"
         case .generic: return "Generic PTP camera"
         }
     }
@@ -27,11 +38,17 @@ public enum CameraVendor: String, Codable, Sendable, CaseIterable, Identifiable 
         if m.contains("nikon") { return .nikon }
         if m.contains("sony") { return .sony }
         if m.contains("fuji") { return .fujifilm }
-        if m.contains("ricoh") || m.contains("pentax") { return .ricoh }
+        // Pentax bodies report "RICOH IMAGING" as the maker: check the model first.
+        if m.contains("pentax") { return .pentax }
+        if m.contains("theta") || m.contains("insta360") { return .osc }
+        if m.contains("ricoh") { return .ricoh }
         if m.contains("leica") { return .leica }
         if m.contains("olympus") || m.contains("om digital") || m.contains("om system") { return .olympus }
         if m.contains("panasonic") || m.contains("lumix") { return .panasonic }
         if m.contains("hasselblad") { return .hasselblad }
+        if m.contains("sigma") { return .sigma }
+        if m.contains("samsung") { return .samsung }
+        if m.contains("gopro") { return .gopro }
         switch PTPVendorExtensionID(rawValue: info.vendorExtensionID) {
         case .canon?: return .canon
         case .nikon?: return .nikon
@@ -40,6 +57,8 @@ public enum CameraVendor: String, Codable, Sendable, CaseIterable, Identifiable 
         case .panasonic?: return .panasonic
         case .olympus?: return .olympus
         case .leica?: return .leica
+        case .pentax?: return .pentax
+        case .samsung?: return .samsung
         default: return .generic
         }
     }
@@ -56,19 +75,29 @@ public enum CameraVendor: String, Codable, Sendable, CaseIterable, Identifiable 
         case .olympus: return 0x07B4
         case .panasonic: return 0x04DA
         case .hasselblad: return 0x2A5F
-        case .generic: return nil
+        case .pentax: return 0x25FB      // Ricoh Imaging; older bodies 0x0A17
+        case .sigma: return 0x1003
+        case .samsung: return 0x04E8
+        case .gopro: return 0x2672
+        case .osc, .generic: return nil
         }
     }
 
     /// Wireless control is limited to the brands whose protocols we implement.
     public var supportsWirelessControl: Bool {
         switch self {
-        case .canon, .nikon, .sony, .fujifilm, .ricoh: return true
+        case .canon, .nikon, .sony, .fujifilm, .ricoh, .gopro, .osc: return true
         default: return false
         }
     }
 
-    public var supportsWiredControl: Bool { self != .ricoh && self != .hasselblad }
+    /// Over USB every brand gets a PTP handler; what it can do (capture,
+    /// live view, settings, or import only) comes from what the body reports.
+    /// The GR series only imports over USB (its control API is Wi-Fi only).
+    public var supportsWiredControl: Bool { self != .ricoh }
+
+    /// Brands controlled over HTTP rather than PTP/IP on Wi-Fi.
+    public var usesHTTPControl: Bool { self == .ricoh || self == .gopro || self == .osc }
 }
 
 /// Runtime capability flags. Assigned by the vendor handler from DeviceInfo

@@ -45,7 +45,7 @@ one value.
 | `accentDeep` | `#2F6FF0` | bottom of the accent gradient |
 | `accentSoft` | `rgba(74,157,255,.16)` | selection fills |
 | `ok` | `#3DD68C` | connected, ready, delivered |
-| `warn` | `#F2B63D` | battery low, watermark, offline |
+| `warn` | `#F2B63D` | battery low, warnings |
 | `danger` | `#FF5C5C` | disconnected, failed, reject |
 | `pick` | `#FFD166` | star fill |
 
@@ -137,15 +137,15 @@ change · `pick/reject` = light impact · `connected` = success notification ·
 - **Disconnect.** The canvas dims to 60 %, the pill turns `danger`, and a
   bottom sheet slides up with the reconnect strategy in one sentence and one
   button. No modal alert.
-- **Export quote.** A single line updates live as scope changes:
-  "24 photos · 3 credits · 21 watermarked" with the watermark count in `warn`.
+- **Export summary.** A single line updates live as scope changes:
+  "24 photos · 6 RAW → JPEG".
 
 ## Screens at a glance
 
 Onboarding (3 pages, full-bleed imagery placeholder, one line each) →
 Home (sessions as large cards with a 3-up thumbnail strip, resume banner on
 top) → Connect hub → USB / Wi-Fi / FTP → Shoot → Loupe / Compare / Client
-review → Looks sheet → Export sheet → Progress → Credits → Settings.
+review → Looks sheet → Export sheet → Progress → Settings.
 
 Every screen is dark. The splash shows the app icon with a blue bloom and a
 light sweep, then fades into the app once launch work is done.

@@ -348,6 +348,8 @@ final class ShootViewModel {
                     connection = try await ConnectionBuilder.connectPTPIP(host: host, port: port, vendorHint: vendor, shoot: shoot, services: services) { _ in }
                 case .retryRicoh(let host):
                     connection = try await ConnectionBuilder.connectRicoh(host: host, shoot: shoot, services: services) { _ in }
+                case .retryHTTP(let host, let vendor):
+                    connection = try await ConnectionBuilder.connectHTTP(vendor: vendor, host: host, shoot: shoot, services: services) { _ in }
                 case .nothingToDo, .startFresh:
                     return
                 }

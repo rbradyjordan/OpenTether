@@ -69,7 +69,7 @@ struct BrandGuide: Identifiable {
                    ],
                    notes: ["Fujifilm pushes events slowly; the filmstrip may lag the shutter by a second."]),
         BrandGuide(vendor: .ricoh,
-                   summary: "GR III / IIIx and Theta are wireless only, over the camera's own Wi-Fi and HTTP API.",
+                   summary: "GR III / IIIx are controlled over the camera's own Wi-Fi. Over USB they import only. (Theta: see 360° cameras.)",
                    wired: [],
                    wireless: [
                        Step(text: "GR III: Menu → Wireless settings → Wi-Fi → ON (or hold the Wi-Fi button). Note the password printed on the camera's sticker / menu.", symbol: "antenna.radiowaves.left.and.right"),
@@ -99,6 +99,49 @@ struct BrandGuide: Identifiable {
                    ],
                    wireless: [],
                    notes: ["Wireless control is not implemented for Lumix; use the cable."]),
+        BrandGuide(vendor: .pentax,
+                   summary: "Pentax K-series over USB-C or USB: photos import as you shoot; remote capture when the body offers it.",
+                   wired: [
+                       Step(text: "Setup menu → USB Connection → PTP (not MSC).", symbol: "cable.connector"),
+                       Step(text: "Connect the cable and shoot; each frame lands in Open Tether.", symbol: "camera"),
+                   ],
+                   wireless: [],
+                   notes: ["Pentax's own remote-control extensions are not implemented yet; the shutter button on the camera always works."]),
+        BrandGuide(vendor: .sigma,
+                   summary: "Sigma fp / fp L / BF over USB-C: frames import as you shoot; remote capture when the body offers it.",
+                   wired: [
+                       Step(text: "Menu → System → USB Mode → Camera Control (or PTP), not Mass Storage or UVC/UAC.", symbol: "cable.connector"),
+                       Step(text: "Connect the cable and shoot.", symbol: "camera"),
+                   ],
+                   wireless: [],
+                   notes: ["DNG files arrive as originals with their XMP sidecar on export."]),
+        BrandGuide(vendor: .hasselblad,
+                   summary: "X2D / X1D / 907X over USB-C: frames import as you shoot (3FR and JPEG).",
+                   wired: [
+                       Step(text: "Settings → Connectivity → USB → PTP (Phocus control off).", symbol: "cable.connector"),
+                       Step(text: "Connect the cable and shoot.", symbol: "camera"),
+                   ],
+                   wireless: [],
+                   notes: ["Hasselblad's Phocus control protocol is private, so exposure control stays on the camera."]),
+        BrandGuide(vendor: .gopro,
+                   summary: "HERO9 and later over the camera's Wi-Fi: remote shutter, and every still (JPEG or GoPro RAW) lands on the phone.",
+                   wired: [],
+                   wireless: [
+                       Step(text: "Pair the GoPro once with GoPro Quik so its Wi-Fi can be turned on.", symbol: "link"),
+                       Step(text: "On the camera: Preferences → Connections → Wireless Connections → On (or swipe down → Connect).", symbol: "antenna.radiowaves.left.and.right"),
+                       Step(text: "On the phone: Settings → Wi-Fi → join the GoPro's network (password under Connections → Camera Info).", symbol: "wifi"),
+                       Step(text: "Back in Open Tether the GoPro shows up automatically (10.5.5.9); tap it.", symbol: "camera"),
+                   ],
+                   notes: ["Open Tether switches the camera to photo mode on connect.", "Videos stay on the card; only stills are downloaded."]),
+        BrandGuide(vendor: .osc,
+                   summary: "Ricoh Theta, Insta360 and other 360° cameras that speak the Open Spherical Camera API.",
+                   wired: [],
+                   wireless: [
+                       Step(text: "Turn on the camera's Wi-Fi (access point / direct mode).", symbol: "antenna.radiowaves.left.and.right"),
+                       Step(text: "Join its network in Settings → Wi-Fi (Theta: THETAxxxx, password = serial digits).", symbol: "wifi"),
+                       Step(text: "Back in Open Tether the camera shows up automatically (Theta 192.168.1.1, Insta360 192.168.42.1); tap it.", symbol: "camera"),
+                   ],
+                   notes: ["Equirectangular JPEGs import at full size; stitching happens in the camera."]),
     ]
 
     static func guide(for vendor: CameraVendor) -> BrandGuide? { all.first { $0.vendor == vendor } }

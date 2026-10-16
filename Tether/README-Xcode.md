@@ -32,6 +32,4 @@ open Tether.xcodeproj
 
 - Run on a real device: ImageCaptureCore (USB-C) and Wi-Fi discovery do not work in the
   simulator.
-- The cloud base URL defaults to `http://127.0.0.1:8787` for development and is editable
-  in Settings. Local HTTP is allowed by default on `127.0.0.1`; for another dev host add
-  an ATS exception in `project.yml`.
+- Open Tether has no server: everything runs on the device.

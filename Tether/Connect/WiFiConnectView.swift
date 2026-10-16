@@ -132,7 +132,7 @@ struct MethodBadge: View {
         case .ssdp: return "SSDP"
         case .bonjour: return "Bonjour"
         case .fujiUDP: return "Fuji"
-        case .ricohHTTP: return "HTTP"
+        case .ricohHTTP, .httpProbe: return "HTTP"
         case .manual: return "Manual"
         }
     }

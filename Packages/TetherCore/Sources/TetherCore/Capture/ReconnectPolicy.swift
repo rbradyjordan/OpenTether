@@ -29,6 +29,9 @@ public struct ReconnectPolicy: Equatable, Sendable {
             else { strategy = .askUser("The camera's address is unknown. Find it on the network again.") }
         case .ricohHTTP?:
             strategy = .redial(host: session.lastHost ?? "192.168.0.1", port: 80)
+        case .http?:
+            if let h = session.lastHost { strategy = .redial(host: h, port: 80) }
+            else { strategy = .askUser("Join the camera's Wi-Fi again, then pick it from the list.") }
         case .ftpPush?:
             strategy = .ftpPassive
         case nil:
@@ -45,7 +48,7 @@ public struct ReconnectPolicy: Equatable, Sendable {
 
     public var userMessage: String {
         switch strategy {
-        case .waitForUSBDevice: return "Plug the camera back in. Tether reconnects as soon as it sees it."
+        case .waitForUSBDevice: return "Plug the camera back in. Open Tether reconnects as soon as it sees it."
         case .redial(let h, _): return "Reconnecting to the camera at \(h)…"
         case .ftpPassive: return "The camera sends files when it is ready. Check it is still on the same Wi-Fi."
         case .askUser(let s): return s
