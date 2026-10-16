@@ -148,6 +148,7 @@ struct ConnectRouteView: View {
         case .testedCameras: TestedCamerasView()
         case .privacy: PrivacyView()
         case .about: AboutView()
+        case .metadata: MetadataSettingsView()
         }
     }
 }

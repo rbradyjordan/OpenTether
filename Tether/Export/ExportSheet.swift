@@ -1,91 +1,82 @@
 import SwiftUI
 import TetherCore
 
+/// Export for a session, a library selection or a collection. Starts from the
+/// remembered settings (`WorkspaceMemory.lastExport`) and writes them back on
+/// enqueue so "Export like last time" is one tap.
 struct ExportSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var sessionID: String
+    /// nil when the frames may span sessions (library); one job per session is made.
+    var sessionID: String?
     var items: [CaptureItem]
     var selectedID: String?
     var look: LookStack
+    var selectionIDs: [String] = []
+    var collectionName: String? = nil
 
     @State private var scope: ExportScope = .all
     @State private var minRating = 3
     @State private var destination: ExportDestinationChoice = .photos
-    @State private var applyLook = true
-    @State private var includeRAW = false
+    @State private var options = ExportOptions()
     @State private var resize = false
     @State private var longEdge = 2048
-    @State private var quality = 0.92
     @State private var ftpDestinations: [StoredFTPDestination] = []
+    @State private var previewPaths: [String] = []
     @State private var error: String?
+    @State private var loaded = false
 
+    private var fromLibrary: Bool { sessionID == nil }
     private var effectiveScope: ExportScope { if case .rated = scope { return .rated(min: minRating) }; return scope }
-    private var chosen: [CaptureItem] { effectiveScope.filter(items, selectedID: selectedID) }
-    private var options: ExportOptions {
-        ExportOptions(applyLook: applyLook, watermark: false, maxLongEdge: resize ? longEdge : nil, jpegQuality: quality, includeRAW: includeRAW)
-    }
+    private var chosen: [CaptureItem] { effectiveScope.filter(items, selectedID: selectedID, selectionIDs: Set(selectionIDs)) }
+    private var effectiveOptions: ExportOptions { var o = options; o.maxLongEdge = resize ? longEdge : nil; return o }
     private var previewItems: [ExportJob.Item] {
-        chosen.filter { $0.kind != .raw || includeRAW }.filter { $0.kind.isStill }
+        chosen.filter { $0.kind != .raw || options.includeRAW }.filter { $0.kind.isStill }
             .map { ExportJob.Item(id: $0.id, filename: $0.filename, kind: $0.kind, bytes: $0.bytes) }
     }
     private var quote: CreditsState.Quote { app.credits.quote(for: previewItems, forceWatermark: false) }
     private var quoteLine: ExportQuoteLine { CreditsFormatting.quoteLine(photos: previewItems.count, quote: quote, tier: app.credits.tier) }
+    private var presets: [ExportScope] { fromLibrary ? ExportScope.presets(selectionCount: selectionIDs.count, inCollection: collectionName != nil) : ExportScope.presets }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("What") {
-                    Picker("Scope", selection: $scope) {
-                        ForEach(ExportScope.presets) { s in Text(s.title).tag(s) }
-                    }
-                    .pickerStyle(.segmented)
-                    if case .rated = scope {
-                        Stepper("Minimum rating: \(minRating)", value: $minRating, in: 1 ... 5)
-                    }
-                }
-                Section("Where") {
-                    Picker("Destination", selection: $destination) {
-                        Text("Photos").tag(ExportDestinationChoice.photos)
-                        Text("Files").tag(ExportDestinationChoice.files)
-                        Text("Share").tag(ExportDestinationChoice.share)
-                        ForEach(ftpDestinations) { d in Text("FTP · \(d.name)").tag(ExportDestinationChoice.ftp(d.id)) }
-                        Text("Cloud batch").tag(ExportDestinationChoice.cloud)
-                    }
-                    NavigationLink("FTP destinations", value: AppRoute.ftpDestinations)
-                }
-                Section("Options") {
-                    Toggle("Apply look", isOn: $applyLook).disabled(look.isNeutral)
-                    Toggle("Include RAW files", isOn: $includeRAW)
-                    Toggle("Resize", isOn: $resize)
-                    if resize {
-                        Picker("Long edge", selection: $longEdge) {
-                            Text("1024 px").tag(1024)
-                            Text("2048 px").tag(2048)
-                            Text("3000 px").tag(3000)
-                            Text("4096 px").tag(4096)
-                        }
-                    }
-                    VStack(alignment: .leading) {
-                        Text("JPEG quality \(Int(quality * 100))").contentTransition(.numericText())
-                        Slider(value: $quality, in: 0.5 ... 1, step: 0.02) { Text("JPEG quality") }
-                    }
-                }
+                scopeSection
+                whereSection
+                ExportOptionsSection(options: $options, resize: $resize, longEdge: $longEdge, lookIsNeutral: look.isNeutral)
+                ExportNamingSection(options: $options, previewPaths: previewPaths)
                 if let error { Section { Text(error).foregroundStyle(TetherColor.danger) } }
             }
             .tint(TetherColor.accent)
             .safeAreaInset(edge: .bottom) { quoteBar }
-            .navigationTitle("Export")
+            .navigationTitle(collectionName.map { fromLibrary ? "Export · \($0)" : "Export" } ?? "Export")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .onAppear(perform: load)
+            .task(id: previewKey) { await refreshPreview() }
+        }
+    }
+
+    private var scopeSection: some View {
+        Section("What") {
+            Picker("Scope", selection: $scope) { ForEach(presets) { s in Text(s.title).tag(s) } }
+                .pickerStyle(presets.count > 4 ? .menu : .segmented)
+            if case .rated = scope { Stepper("Minimum rating: \(minRating)", value: $minRating, in: 1 ... 5) }
+        }
+    }
+
+    private var whereSection: some View {
+        Section("Where") {
+            Picker("Destination", selection: $destination) {
+                Text("Photos").tag(ExportDestinationChoice.photos)
+                Text("Files").tag(ExportDestinationChoice.files)
+                Text("Share").tag(ExportDestinationChoice.share)
+                ForEach(ftpDestinations) { d in Text("FTP · \(d.name)").tag(ExportDestinationChoice.ftp(d.id)) }
+                Text("Cloud batch").tag(ExportDestinationChoice.cloud)
             }
-            .onAppear {
-                ftpDestinations = (try? app.store.ftpDestinations()) ?? []
-                if look.isNeutral { applyLook = false }
-            }
+            NavigationLink("FTP destinations", value: AppRoute.ftpDestinations)
         }
     }
 
@@ -93,9 +84,7 @@ struct ExportSheet: View {
     private var quoteBar: some View {
         VStack(spacing: TetherSpace.m) {
             HStack(alignment: .firstTextBaseline) {
-                quoteText
-                    .font(TetherFont.hud)
-                    .contentTransition(.numericText())
+                quoteText.font(TetherFont.hud).contentTransition(.numericText())
                     .animation(Motion.spring(TetherMotion.snap, reduce: reduceMotion), value: quoteLine)
                 Spacer()
                 NavigationLink("Credits", value: AppRoute.credits).font(TetherFont.hud)
@@ -104,18 +93,13 @@ struct ExportSheet: View {
             .accessibilityLabel(quoteLine.text)
             if quote.watermarkedItems > 0, app.credits.tier != .pro {
                 Text("Out of free credits: watermarked frames carry a translucent TETHER mark.")
-                    .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .font(TetherFont.hud).foregroundStyle(TetherColor.ink1).fixedSize(horizontal: false, vertical: true)
             }
             Button { Task { await enqueue() } } label: {
                 Text(previewItems.isEmpty ? "Nothing to export" : "Export \(previewItems.count)")
-                    .font(TetherFont.headline)
-                    .frame(maxWidth: .infinity, minHeight: TetherHit.min + 6)
-                    .contentTransition(.numericText())
+                    .font(TetherFont.headline).frame(maxWidth: .infinity, minHeight: TetherHit.min + 6).contentTransition(.numericText())
             }
-            .buttonStyle(.borderedProminent)
-            .tint(TetherColor.accent)
-            .disabled(previewItems.isEmpty)
+            .buttonStyle(.borderedProminent).tint(TetherColor.accent).disabled(previewItems.isEmpty)
         }
         .padding(TetherSpace.l)
         .background(.bar)
@@ -130,16 +114,123 @@ struct ExportSheet: View {
         return text
     }
 
+    // MARK: Memory
+
+    private func load() {
+        ftpDestinations = (try? app.store.ftpDestinations()) ?? []
+        guard !loaded else { return }
+        loaded = true
+        let last = app.memory.get(WorkspaceMemory.lastExport)
+        destination = ExportDestinationChoice(last.destination)
+        options = last.options
+        resize = last.options.maxLongEdge != nil
+        longEdge = last.options.maxLongEdge ?? 2048
+        if look.isNeutral { options.applyLook = false }
+        if let s = ExportScope.from(memory: last.scope, selectionCount: selectionIDs.count, inCollection: collectionName != nil), presets.contains(where: { $0.id == s.id }) || s.id.hasPrefix("rated") {
+            scope = s
+            if case .rated(let n) = s { minRating = n; scope = .rated(min: 3) }
+        } else if !selectionIDs.isEmpty, fromLibrary {
+            scope = .selection(selectionIDs.count)
+        }
+    }
+
+    private func remember() {
+        var m = app.memory.get(WorkspaceMemory.lastExport)
+        m.destination = destination.destination
+        m.options = effectiveOptions
+        m.scope = effectiveScope.id
+        app.memory.set(WorkspaceMemory.lastExport, m)
+    }
+
+    // MARK: Jobs
+
+    private var previewKey: String { "\(effectiveScope.id)|\(options.naming.pattern)|\(options.layout.rawValue)|\(options.includeRAW)|\(options.writeSidecars)|\(options.writeManifest)|\(chosen.count)" }
+
+    /// First three delivered paths of the jobs this sheet would enqueue.
+    private func refreshPreview() async {
+        var paths: [String] = []
+        for job in await makeJobs() where paths.count < 3 {
+            paths += job.items.filter { !$0.isCompanion }.prefix(3 - paths.count).map(\.deliveredRelativePath)
+        }
+        previewPaths = paths
+    }
+
+    private func makeJobs() async -> [ExportJob] {
+        var jobs: [ExportJob] = []
+        let groups = Dictionary(grouping: chosen, by: \.sessionID)
+        for (sid, group) in groups.sorted(by: { $0.key < $1.key }) {
+            guard let session = try? app.store.session(sid) else { continue }
+            let jobLook = fromLibrary ? LookStack(lookID: session.lookID, strength: session.lookStrength) : look
+            let job = await app.exportQueue.makeJob(session: session, captures: group, destination: destination.destination,
+                                                    options: effectiveOptions, look: jobLook, credits: app.credits)
+            if !job.items.isEmpty { jobs.append(job) }
+        }
+        return jobs
+    }
+
     private func enqueue() async {
-        guard let session = try? app.store.session(sessionID) else { error = "Session not found"; return }
-        let job = await app.exportQueue.makeJob(session: session, captures: chosen, destination: destination.destination,
-                                                options: options, look: look, credits: app.credits)
+        let jobs = await makeJobs()
+        guard !jobs.isEmpty else { error = fromLibrary ? "Nothing to export" : "Session not found"; return }
         do {
-            try await app.exportQueue.enqueue(job)
-            app.toast = ToastMessage(text: "Exporting \(job.items.count) frames to \(job.destination.displayName)", systemImage: "arrow.up.doc")
+            for job in jobs { try await app.exportQueue.enqueue(job) }
+            remember()
+            let n = jobs.reduce(0) { $0 + $1.items.filter { !$0.isCompanion }.count }
+            app.toast = ToastMessage(text: "Exporting \(n) frames to \(destination.destination.displayName)", systemImage: "arrow.up.doc")
             dismiss()
         } catch {
             self.error = "\(error)"
+        }
+    }
+}
+
+/// Look, RAW, resize, quality.
+private struct ExportOptionsSection: View {
+    @Binding var options: ExportOptions
+    @Binding var resize: Bool
+    @Binding var longEdge: Int
+    var lookIsNeutral: Bool
+
+    var body: some View {
+        Section("Options") {
+            Toggle("Apply look", isOn: $options.applyLook).disabled(lookIsNeutral)
+            Toggle("Include RAW files", isOn: $options.includeRAW)
+            Toggle("Resize", isOn: $resize)
+            if resize {
+                Picker("Long edge", selection: $longEdge) {
+                    Text("1024 px").tag(1024); Text("2048 px").tag(2048); Text("3000 px").tag(3000); Text("4096 px").tag(4096)
+                }
+            }
+            VStack(alignment: .leading) {
+                Text("JPEG quality \(Int(options.jpegQuality * 100))").contentTransition(.numericText())
+                Slider(value: $options.jpegQuality, in: 0.5 ... 1, step: 0.02) { Text("JPEG quality") }
+            }
+        }
+    }
+}
+
+/// Filename template, folder layout, metadata companions, and the path preview.
+private struct ExportNamingSection: View {
+    @Binding var options: ExportOptions
+    var previewPaths: [String]
+
+    private var presetIDs: [String] { NamingTemplate.presets.map(\.pattern) }
+
+    var body: some View {
+        Section {
+            Picker("Naming", selection: $options.naming.pattern) {
+                ForEach(NamingTemplate.presets, id: \.pattern) { t in Text(t.pattern).tag(t.pattern) }
+                if !presetIDs.contains(options.naming.pattern) { Text("Custom").tag(options.naming.pattern) }
+            }
+            TextField("Pattern", text: $options.naming.pattern).textInputAutocapitalization(.never).autocorrectionDisabled().font(.system(.body, design: .monospaced))
+            Picker("Folders", selection: $options.layout) { ForEach(FolderLayout.allCases) { Text($0.displayName).tag($0) } }
+            Toggle("Embed XMP in JPEGs", isOn: $options.embedMetadata)
+            Toggle("Write .xmp sidecars", isOn: $options.writeSidecars)
+            Toggle("Write manifest (JSON + CSV)", isOn: $options.writeManifest)
+        } header: { Text("Files") } footer: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Tokens: {orig} {session} {date} {seq:4} {camera} {client} {rating} {label} {pick}")
+                ForEach(previewPaths, id: \.self) { Text($0).font(.system(.caption, design: .monospaced)).foregroundStyle(TetherColor.ink0) }
+            }
         }
     }
 }

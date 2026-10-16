@@ -8,6 +8,8 @@ final class PhotosExportSink: ExportSink, @unchecked Sendable {
     init(store: SessionStore) { self.store = store }
 
     func deliver(fileURL: URL, item: ExportJob.Item, destination: ExportDestination) async throws -> String? {
+        // Sidecars and manifests have no place in Photos.
+        if item.isCompanion { return nil }
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { throw PhotosSinkError.notAuthorized }
         let albumName = sessionName(for: item) ?? "Tether"

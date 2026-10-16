@@ -21,6 +21,7 @@ enum AppRoute: Hashable {
     case testedCameras
     case privacy
     case about
+    case metadata
 }
 
 /// Sheets presented from the shoot screen.

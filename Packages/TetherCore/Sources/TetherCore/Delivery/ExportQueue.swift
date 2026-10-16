@@ -269,7 +269,18 @@ public actor ExportQueue {
         guard let cloud else { throw CloudError.notRegistered }
         let session = try store.session(job.sessionID)
         let reqs = job.items.map { TetherCloudClient.BatchItemRequest(clientID: $0.id, filename: $0.filename, kind: $0.kind == .raw ? "raw" : "jpeg", bytes: $0.bytes) }
-        let batch = try await cloud.createBatch(sessionName: session?.name ?? "Session", watermark: job.options.watermark, lookID: job.look.lookID, items: reqs)
+        var manifest: SessionManifest?
+        if job.options.writeManifest, let session {
+            let caps = try store.captures(ids: job.items.map(\.id))
+            var tags: [String: [String]] = [:], colls: [String: [String]] = [:]
+            for c in caps {
+                tags[c.id] = try? store.tags(for: c.id)
+                colls[c.id] = (try? store.collectionIDs(containing: c.id))?.compactMap { try? store.collection($0)?.name }
+            }
+            let names = Dictionary(uniqueKeysWithValues: job.items.compactMap { i in i.exportFilename.map { (i.id, $0) } })
+            manifest = SessionManifest(session: session, captures: caps, tags: tags, collections: colls, exportedNames: names)
+        }
+        let batch = try await cloud.createBatch(sessionName: session?.name ?? "Session", watermark: job.options.watermark, lookID: job.look.lookID, items: reqs, manifest: manifest)
         job.cloudBatchID = batch.batchID
         job.creditsCharged = batch.creditsCharged
         for b in batch.items {

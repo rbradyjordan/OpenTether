@@ -15,12 +15,19 @@ final class FilesExportSink: ExportSink, @unchecked Sendable {
         self.exportsRoot = exportsRoot ?? docs.appendingPathComponent("Exports", isDirectory: true)
     }
 
+    /// Lays files out as the job's naming template and folder layout decided
+    /// (`deliveredRelativePath`), creating nested directories; sidecars and
+    /// manifests are companions and land beside their photos.
     func deliver(fileURL: URL, item: ExportJob.Item, destination: ExportDestination) async throws -> String? {
         let folder = sessionFolderName(for: item)
         var dir = exportsRoot.appendingPathComponent(folder, isDirectory: true)
         if case .share = destination { dir = dir.appendingPathComponent("Share", isDirectory: true) }
+        let relative = item.deliveredRelativePath
+        let subdir = (relative as NSString).deletingLastPathComponent
+        if !subdir.isEmpty { dir = dir.appendingPathComponent(subdir, isDirectory: true) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let target = uniqueURL(in: dir, preferred: fileURL.lastPathComponent)
+        let preferred = (relative as NSString).lastPathComponent
+        let target = uniqueURL(in: dir, preferred: preferred.isEmpty ? fileURL.lastPathComponent : preferred)
         try FileManager.default.copyItem(at: fileURL, to: target)
         return target.path
     }

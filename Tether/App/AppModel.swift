@@ -51,7 +51,7 @@ final class AppModel {
         self.purchases = StoreKitPurchases(cloud: { cloudBox.client })
         self.ftpReceiver = FTPReceiverModel(inbox: services.ftpInbox, settings: settings)
         self.cloudBox = cloudBox
-        let memory = WorkspaceMemory(store: services.store)
+        let memory = services.memory
         let editor = ReviewEditor(store: services.store, memory: memory)
         self.memory = memory
         self.editor = editor

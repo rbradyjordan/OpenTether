@@ -38,6 +38,10 @@ struct SettingsView: View {
                 NavigationLink("FTP destinations (exports)", value: AppRoute.ftpDestinations)
             }
 
+            Section("Metadata & interoperability") {
+                NavigationLink("Creator, copyright, XMP and sidecars", value: AppRoute.metadata)
+            }
+
             Section("Diagnostics") {
                 NavigationLink("PTP transaction log", value: AppRoute.ptpLog)
                 NavigationLink("Tested cameras", value: AppRoute.testedCameras)

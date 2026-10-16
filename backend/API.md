@@ -128,7 +128,7 @@ identity by `strength`; evaluate per-channel at every grid node; store as a
 
 ```json
 {"session_name":"Studio Day","watermark":false,"look_id":"film-warm"|null,
- "items":[{"client_id":"a","filename":"IMG_0001.jpg","kind":"jpeg"|"raw","bytes":4200000}]}
+ "manifest": <any JSON object, optional; stored and added to the download zip as manifest.json>, "items":[{"client_id":"a","filename":"IMG_0001.jpg","kind":"jpeg"|"raw","bytes":4200000}]}
 ```
 
 → `200`

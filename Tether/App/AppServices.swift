@@ -4,6 +4,8 @@ import TetherCore
 /// Wires the core package to the platform adapters. Built once at launch.
 struct AppServices {
     let store: SessionStore
+    /// Between-session memory; the export queue reads the metadata profile from it.
+    let memory: WorkspaceMemory
     let cache: CaptureCacheProxy
     let keychain: KeychainStore
     let tokens: KeychainTokenStore
@@ -25,6 +27,7 @@ struct AppServices {
         let support = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
         let store = try SessionStore(path: support.appendingPathComponent("tether.sqlite").path)
+        let memory = WorkspaceMemory(store: store)
         let cloudURL = AppSettings.storedCloudURL(in: store)
         let cache = CaptureCacheProxy(storageRoot: support.appendingPathComponent("Captures", isDirectory: true))
         let keychain = KeychainStore()
@@ -33,10 +36,10 @@ struct AppServices {
         let resolver = LookResolver(store: store) { look in try await cloud.cube(look) }
         let renderer = CoreImageLookRenderer()
         let sink = RoutingExportSink(photos: PhotosExportSink(store: store), files: FilesExportSink(store: store))
-        let queue = ExportQueue(store: store, cache: cache, sink: sink, renderer: renderer, cloud: cloud, looks: resolver,
+        let queue = ExportQueue(store: store, cache: cache, sink: sink, renderer: renderer, cloud: cloud, looks: resolver, memory: memory,
                                 ftpClientFactory: { dest in AppServices.ftpUploader(for: dest, keychain: keychain) })
         VendorRegistry.installBuiltIns()
-        return AppServices(store: store, cache: cache, keychain: keychain, tokens: tokens,
+        return AppServices(store: store, memory: memory, cache: cache, keychain: keychain, tokens: tokens,
                            previews: ImageIOPreviewGenerator(), renderer: renderer, lookResolver: resolver,
                            exportQueue: queue, discovery: CameraDiscoverer(), ssid: CoreLocationSSIDMonitor(),
                            usbBrowser: USBCameraBrowser(), ptpLog: PTPLog(),

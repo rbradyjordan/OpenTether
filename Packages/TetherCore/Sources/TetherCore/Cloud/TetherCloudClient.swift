@@ -187,12 +187,12 @@ public final class TetherCloudClient: @unchecked Sendable {
         return try decode(data, status)
     }
 
-    public func createBatch(sessionName: String, watermark: Bool, lookID: String?, items: [BatchItemRequest]) async throws -> Batch {
-        struct Req: Codable {
-            var sessionName: String, watermark: Bool, lookID: String?, items: [BatchItemRequest]
-            enum CodingKeys: String, CodingKey { case sessionName = "session_name", watermark, lookID = "look_id", items }
+    public func createBatch(sessionName: String, watermark: Bool, lookID: String?, items: [BatchItemRequest], manifest: SessionManifest? = nil) async throws -> Batch {
+        struct Req: Encodable {
+            var sessionName: String, watermark: Bool, lookID: String?, items: [BatchItemRequest], manifest: SessionManifest?
+            enum CodingKeys: String, CodingKey { case sessionName = "session_name", watermark, lookID = "look_id", items, manifest }
         }
-        return try await send("POST", "/v1/exports/batch", body: Req(sessionName: sessionName, watermark: watermark, lookID: lookID, items: items))
+        return try await send("POST", "/v1/exports/batch", body: Req(sessionName: sessionName, watermark: watermark, lookID: lookID, items: items, manifest: manifest))
     }
 
     /// Returns the number of bytes already stored for an item (0 when none).
