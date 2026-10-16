@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import TetherCore
 import UIKit
 
@@ -24,7 +25,7 @@ struct LooksSheet: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var strength: Double = 1
     @State private var selectedID: String?
-    @State private var refreshing = false
+    @State private var importingCube = false
     @State private var lastStop: Double?
     @State private var detentTick = 0
 
@@ -66,12 +67,12 @@ struct LooksSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        refreshing = true
-                        Task { await app.refreshCloud(); refreshing = false }
-                    } label: { if refreshing { ProgressView() } else { Label("Refresh", systemImage: "arrow.clockwise") } }
-                    .accessibilityLabel("Refresh looks from the cloud")
+                    Button { importingCube = true } label: { Label("Import .cube LUT", systemImage: "square.and.arrow.down") }
                 }
+            }
+            .fileImporter(isPresented: $importingCube, allowedContentTypes: [UTType(filenameExtension: "cube") ?? .data, .data],
+                          allowsMultipleSelection: true) { result in
+                if case .success(let urls) = result { importCubes(urls) }
             }
             .onAppear {
                 selectedID = model.lookStack.lookID
@@ -182,5 +183,25 @@ private struct LookTile: View {
         let warm = Color(hue: hint.warmth >= 0 ? 0.08 : 0.6, saturation: min(1, abs(hint.warmth) * 0.6 + 0.2), brightness: 0.8)
         let base = Color(white: 0.5 + hint.contrast * 0.2)
         return LinearGradient(colors: [warm, base], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+extension LooksSheet {
+    /// Adds `.cube` 3D LUTs (from Lightroom, Resolve, Photoshop…) as looks.
+    func importCubes(_ urls: [URL]) {
+        var added = 0
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let text = try? String(contentsOf: url, encoding: .utf8), let lut = try? CubeLUT(parsing: text) else { continue }
+            let id = "cube.\(UUID().uuidString)"
+            let name = url.deletingPathExtension().lastPathComponent
+            let descriptor = LookDescriptor(id: id, name: name, family: "Imported", size: lut.size, sha256: "", cubeURL: "local:\(id)")
+            try? app.store.saveLook(descriptor, cube: Data(text.utf8))
+            added += 1
+        }
+        app.reloadLooks()
+        app.toast = ToastMessage(text: added == 0 ? "No valid .cube files" : "Added \(added) look\(added == 1 ? "" : "s")",
+                                 systemImage: added == 0 ? "exclamationmark.triangle" : "camera.filters")
     }
 }

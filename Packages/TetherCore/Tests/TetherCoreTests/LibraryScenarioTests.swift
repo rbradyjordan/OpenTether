@@ -185,7 +185,7 @@ final class LibraryScenarioTests: XCTestCase {
     func testTemplatesAndCameraMemoryShapeTheNextSession() throws {
         var first = ShootSession(name: "", destination: .host)
         first.lookID = "film-warm"; first.lookStrength = 0.8; first.showNewestCapture = false
-        first.routing = RoutingRules(jpeg: .photos, raw: .cloud, autoExportPicks: true)
+        first.routing = RoutingRules(jpeg: .photos, raw: .ftp, autoExportPicks: true)
         first.camera = canon
         memory.learn(from: first)
         let d = memory.get(WorkspaceMemory.sessionDefaults)
@@ -201,7 +201,7 @@ final class LibraryScenarioTests: XCTestCase {
         memory.configure(&next, with: memory.suggestedTemplate(for: canon), camera: canon, index: 2)
         XCTAssertEqual(next.destination, .host)
         XCTAssertTrue(next.name.hasSuffix("Lookbook EOS R5"))
-        XCTAssertEqual(next.routing.raw, .cloud)
+        XCTAssertEqual(next.routing.raw, .ftp)
         XCTAssertEqual(memory.templates().first?.useCount, 1)
         XCTAssertEqual(memory.camera(canon.id)?.templateID, t.id)
         XCTAssertEqual(memory.suggestedTemplate(for: canon)?.id, t.id)

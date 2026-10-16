@@ -28,7 +28,8 @@ final class InteropTests: XCTestCase {
         XCTAssertEqual(back.rating, 4); XCTAssertEqual(back.label, .blue); XCTAssertTrue(back.pick)
         XCTAssertEqual(Set(back.keywords), ["hero", "cover", "Lookbook AW26"])
         XCTAssertEqual(back.hierarchicalKeywords, ["Tether|hero", "Tether|cover"])
-        XCTAssertEqual(back.creator, "Brady Jordan"); XCTAssertEqual(back.copyright, "© {year} Brady Jordan")
+        XCTAssertEqual(back.creator, "Brady Jordan"); XCTAssertEqual(back.copyright, profile.copyrightLine(), "{year} is resolved, not written literally")
+        XCTAssertFalse(xml.contains("{year}"))
         XCTAssertEqual(back.headline, "Lookbook AW26")
         XCTAssertEqual(back.createDate?.timeIntervalSince1970, 1_792_000_000)
     }
@@ -166,22 +167,24 @@ final class InteropTests: XCTestCase {
 
         let queue = ExportQueue(store: store, cache: cache, sink: FolderSink(root: out), looks: LookResolver(store: store), memory: memory)
         let options = ExportOptions(includeRAW: true, naming: NamingTemplate("{session}_{seq:3}"), layout: .captureOne, writeManifest: true)
-        let job = await queue.makeJob(session: shoot, captures: [jpeg, raw], destination: .files, options: options, look: .none, credits: nil)
-        XCTAssertEqual(job.items.map { $0.deliveredRelativePath }, ["AW26/Selects/AW26_001.JPG", "AW26/Selects/AW26_002.CR3"])
+        let job = await queue.makeJob(session: shoot, captures: [jpeg, raw], destination: .files, options: options, look: .none)
+        XCTAssertEqual(job.items.map { $0.deliveredRelativePath }, ["AW26/Selects/AW26_001.JPG", "AW26/Selects/AW26_001.CR3"],
+                       "RAW+JPEG twins keep one base name so Lightroom / Capture One re-pair them")
         try await queue.enqueue(job)
         for await ev in queue.events { if case .finished(let j) = ev { XCTAssertEqual(j.status.key, "completed"); break } }
 
         let fm = FileManager.default
         XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_001.JPG").path))
-        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_001.xmp").path), "JPEG sidecar (profile asked)")
-        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_002.xmp").path), "RAW sidecar")
+        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_001.CR3").path))
+        XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_001.xmp").path), "one sidecar for the pair")
+        XCTAssertFalse(fm.fileExists(atPath: out.appendingPathComponent("AW26/Selects/AW26_001-1.xmp").path), "no duplicate sidecar")
         XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Output/AW26-manifest.json").path))
         XCTAssertTrue(fm.fileExists(atPath: out.appendingPathComponent("AW26/Output/AW26-manifest.csv").path))
         let stamped = try Data(contentsOf: out.appendingPathComponent("AW26/Selects/AW26_001.JPG"))
         let packet = try JPEGXMP.extract(from: stamped)
         XCTAssertEqual(packet.rating, 5); XCTAssertTrue(packet.pick); XCTAssertEqual(packet.creator, "Brady Jordan")
         XCTAssertTrue(packet.keywords.contains("hero"))
-        let side = try XMPPacket(parsing: Data(contentsOf: out.appendingPathComponent("AW26/Selects/AW26_002.xmp")))
+        let side = try XMPPacket(parsing: Data(contentsOf: out.appendingPathComponent("AW26/Selects/AW26_001.xmp")))
         XCTAssertEqual(side.rating, 5)
         XCTAssertEqual(try store.count(matching: CaptureFilter(exportedTo: .files)), 2, "companions are not recorded as exports")
     }
@@ -211,5 +214,22 @@ final class InteropTests: XCTestCase {
         await live.ingestFile(at: f2, from: "cam")
         let item2 = try store.captures(in: shoot.id)[1]
         XCTAssertEqual(item2.rating, 1); XCTAssertEqual(try store.tags(for: item2.id), ["b-roll"])
+
+        // Sidecar pushed before its RAW+JPEG pair: not a frame, applied to both halves.
+        try XMPPacket(rating: 4, label: .green).data.write(to: dir.appendingPathComponent("DSC00050.xmp"))
+        await live.ingestFile(at: dir.appendingPathComponent("DSC00050.xmp"), from: "cam")
+        XCTAssertEqual(try store.captures(in: shoot.id).count, 2, "a lone sidecar is not a capture")
+        try Data([4, 5]).write(to: dir.appendingPathComponent("DSC00050.ARW"))
+        await live.ingestFile(at: dir.appendingPathComponent("DSC00050.ARW"), from: "cam")
+        try stamped.write(to: dir.appendingPathComponent("DSC00050.JPG"))
+        await live.ingestFile(at: dir.appendingPathComponent("DSC00050.JPG"), from: "cam")
+        let pair = try store.captures(in: shoot.id).filter { $0.pairKey == "DSC00050" }
+        XCTAssertEqual(pair.count, 2)
+        XCTAssertTrue(pair.allSatisfy { $0.rating == 4 && $0.colorLabel == .green }, "both halves took the early sidecar")
+
+        // Sidecar pushed after the photo updates it.
+        try XMPPacket(rating: 2).data.write(to: dir.appendingPathComponent("DSC00043.xmp"))
+        await live.ingestFile(at: dir.appendingPathComponent("DSC00043.xmp"), from: "cam")
+        XCTAssertEqual(try store.captures(in: shoot.id).first { $0.filename == "DSC00043.JPG" }?.rating, 2)
     }
 }

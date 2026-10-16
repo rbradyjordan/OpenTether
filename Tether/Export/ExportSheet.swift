@@ -23,6 +23,8 @@ struct ExportSheet: View {
     @State private var resize = false
     @State private var longEdge = 2048
     @State private var ftpDestinations: [StoredFTPDestination] = []
+    @State private var folderDestinations: [StoredFolderDestination] = []
+    @State private var pickingFolder = false
     @State private var previewPaths: [String] = []
     @State private var error: String?
     @State private var loaded = false
@@ -35,8 +37,17 @@ struct ExportSheet: View {
         chosen.filter { $0.kind != .raw || options.includeRAW }.filter { $0.kind.isStill }
             .map { ExportJob.Item(id: $0.id, filename: $0.filename, kind: $0.kind, bytes: $0.bytes) }
     }
-    private var quote: CreditsState.Quote { app.credits.quote(for: previewItems, forceWatermark: false) }
-    private var quoteLine: ExportQuoteLine { CreditsFormatting.quoteLine(photos: previewItems.count, quote: quote, tier: app.credits.tier) }
+    private var summaryLine: String {
+        let raw = previewItems.filter { $0.kind == .raw }.count
+        let photos = previewItems.count - raw
+        var parts: [String] = []
+        if photos > 0 { parts.append("\(photos) photo\(photos == 1 ? "" : "s")") }
+        if raw > 0 {
+            let how = options.rawOutput == .original ? "RAW" : "RAW → \(options.rawOutput.displayName)"
+            parts.append("\(raw) \(how)")
+        }
+        return parts.isEmpty ? "Nothing selected" : parts.joined(separator: " · ")
+    }
     private var presets: [ExportScope] { fromLibrary ? ExportScope.presets(selectionCount: selectionIDs.count, inCollection: collectionName != nil) : ExportScope.presets }
 
     var body: some View {
@@ -79,53 +90,73 @@ struct ExportSheet: View {
         Section("Where") {
             Picker("Destination", selection: $destination) {
                 Text("Photos").tag(ExportDestinationChoice.photos)
-                Text("Files").tag(ExportDestinationChoice.files)
+                Text("On My iPhone › Exports").tag(ExportDestinationChoice.files)
+                ForEach(folderDestinations) { d in
+                    Label(d.name, systemImage: FolderDestinationsView.symbol(for: d.kind)).tag(ExportDestinationChoice.folder(d.id))
+                }
                 Text("Share").tag(ExportDestinationChoice.share)
                 ForEach(ftpDestinations) { d in Text("FTP · \(d.name)").tag(ExportDestinationChoice.ftp(d.id)) }
-                Text("Cloud batch").tag(ExportDestinationChoice.cloud)
             }
+            if let folder = chosenFolder {
+                LabeledContent("Location") {
+                    Text(folder.displayPath ?? folder.name).font(TetherFont.hud).foregroundStyle(TetherColor.ink1).lineLimit(2)
+                }
+                if folder.kind != .plain {
+                    Label(folder.kind == .captureOneSession ? "Capture One session: photos go into Capture, Selects and Trash."
+                                                           : "Lightroom Auto Import: one flat folder, sidecars written first.",
+                          systemImage: "checkmark.seal")
+                        .font(TetherFont.hud).foregroundStyle(TetherColor.ok)
+                }
+            }
+            Button { pickingFolder = true } label: { Label("Add a folder from Files…", systemImage: "folder.badge.plus") }
             NavigationLink("FTP destinations", value: AppRoute.ftpDestinations)
+        }
+        .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { result in
+            guard case .success(let url) = result else { return }
+            do {
+                let saved = try FolderAccess.destination(for: url)
+                try app.store.save(saved)
+                folderDestinations = (try? app.store.folderDestinations()) ?? []
+                destination = .folder(saved.id)
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+        .onChange(of: destination) { _, _ in
+            // Tool-shaped folders bring their own layout.
+            if let layout = chosenFolder?.suggestedLayout { options.layout = layout }
         }
     }
 
-    /// Live quote plus the one action; sits in the thumb zone.
+    private var chosenFolder: StoredFolderDestination? {
+        guard case .folder(let id) = destination else { return nil }
+        return folderDestinations.first { $0.id == id }
+    }
+
+    /// What will go out, plus the one action; sits in the thumb zone.
     private var quoteBar: some View {
         VStack(spacing: TetherSpace.m) {
-            HStack(alignment: .firstTextBaseline) {
-                quoteText.font(TetherFont.hud).contentTransition(.numericText())
-                    .animation(Motion.spring(TetherMotion.snap, reduce: reduceMotion), value: quoteLine)
-                Spacer()
-                NavigationLink("Credits", value: AppRoute.credits).font(TetherFont.hud)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(quoteLine.text)
-            if quote.watermarkedItems > 0, app.credits.tier != .pro {
-                Text("Out of free credits: watermarked frames carry a translucent TETHER mark.")
-                    .font(TetherFont.hud).foregroundStyle(TetherColor.ink1).fixedSize(horizontal: false, vertical: true)
-            }
+            Text(summaryLine)
+                .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentTransition(.numericText())
+                .animation(Motion.spring(TetherMotion.snap, reduce: reduceMotion), value: summaryLine)
             Button { Task { await enqueue() } } label: {
                 Text(previewItems.isEmpty ? "Nothing to export" : "Export \(previewItems.count)")
                     .font(TetherFont.headline).frame(maxWidth: .infinity, minHeight: TetherHit.min + 6).contentTransition(.numericText())
             }
-            .buttonStyle(.tetherPrimary).tint(TetherColor.accent).disabled(previewItems.isEmpty)
+            .buttonStyle(.tetherPrimary).disabled(previewItems.isEmpty)
         }
         .padding(TetherSpace.l)
         .background(.bar)
         .overlay(alignment: .top) { Rectangle().fill(TetherColor.hairline).frame(height: 0.5) }
     }
 
-    private var quoteText: Text {
-        var text = Text(quoteLine.lead).foregroundStyle(TetherColor.ink0)
-        if let watermark = quoteLine.watermark {
-            text = text + Text(" · ").foregroundStyle(TetherColor.ink2) + Text(watermark).foregroundStyle(TetherColor.warn)
-        }
-        return text
-    }
-
     // MARK: Memory
 
     private func load() {
         ftpDestinations = (try? app.store.ftpDestinations()) ?? []
+        folderDestinations = (try? app.store.folderDestinations()) ?? []
         guard !loaded else { return }
         loaded = true
         let last = app.memory.get(WorkspaceMemory.lastExport)
@@ -152,7 +183,7 @@ struct ExportSheet: View {
 
     // MARK: Jobs
 
-    private var previewKey: String { "\(effectiveScope.id)|\(options.naming.pattern)|\(options.layout.rawValue)|\(options.includeRAW)|\(options.writeSidecars)|\(options.writeManifest)|\(chosen.count)" }
+    private var previewKey: String { "\(effectiveScope.id)|\(options.naming.pattern)|\(options.layout.rawValue)|\(options.includeRAW)|\(options.rawOutput.rawValue)|\(options.writeSidecars)|\(options.writeManifest)|\(chosen.count)" }
 
     /// First three delivered paths of the jobs this sheet would enqueue.
     private func refreshPreview() async {
@@ -170,7 +201,7 @@ struct ExportSheet: View {
             guard let session = try? app.store.session(sid) else { continue }
             let jobLook = fromLibrary ? LookStack(lookID: session.lookID, strength: session.lookStrength) : look
             let job = await app.exportQueue.makeJob(session: session, captures: group, destination: destination.destination,
-                                                    options: effectiveOptions, look: jobLook, credits: app.credits)
+                                                    options: effectiveOptions, look: jobLook)
             if !job.items.isEmpty { jobs.append(job) }
         }
         return jobs
@@ -202,6 +233,11 @@ private struct ExportOptionsSection: View {
         Section("Options") {
             Toggle("Apply look", isOn: $options.applyLook).disabled(lookIsNeutral)
             Toggle("Include RAW files", isOn: $options.includeRAW)
+            if options.includeRAW {
+                Picker("RAW as", selection: $options.rawOutput) {
+                    ForEach(RAWOutput.allCases) { Text($0.displayName).tag($0) }
+                }
+            }
             Toggle("Resize", isOn: $resize)
             if resize {
                 Picker("Long edge", selection: $longEdge) {

@@ -56,8 +56,7 @@ final class CommandDispatcher {
                        cameraCapabilities: app.shoot?.capabilities ?? [],
                        inCollection: collection,
                        canUndo: library.undoTitle != nil,
-                       canRedo: library.redoTitle != nil,
-                       hasCredits: app.credits.tier == .pro || app.credits.balance > 0)
+                       canRedo: library.redoTitle != nil)
     }
 
     func available(selection: [String], collection: Collection? = nil, inShoot: Bool = false) -> [Command] {
@@ -183,7 +182,7 @@ final class CommandDispatcher {
             for (sessionID, group) in Dictionary(grouping: items, by: \.sessionID) {
                 guard let session = try? app.store.session(sessionID) else { continue }
                 let job = await app.exportQueue.makeJob(session: session, captures: group, destination: last.destination, options: last.options,
-                                                        look: LookStack(lookID: session.lookID, strength: session.lookStrength), credits: app.credits)
+                                                        look: LookStack(lookID: session.lookID, strength: session.lookStrength))
                 guard !job.items.isEmpty else { continue }
                 do { try await app.exportQueue.enqueue(job); queued += job.items.count } catch { app.toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle") }
             }

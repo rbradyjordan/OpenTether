@@ -1,28 +1,15 @@
 import SwiftUI
 import TetherCore
 
-/// Grouped settings: everyday sections first, developer details under Advanced.
+/// Grouped settings. Everything here is on the device; there is no account.
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
-    @State private var cloudURL = ""
     @State private var ftpUser = ""
     @State private var ftpPassword = ""
     @State private var ftpPort = ""
 
     var body: some View {
         Form {
-            Section {
-                HStack {
-                    SettingsLabel("Cloud", systemImage: "icloud")
-                    Spacer()
-                    cloudStatus.font(TetherFont.callout)
-                }
-                .accessibilityElement(children: .combine)
-                NavigationLink(value: AppRoute.credits) { SettingsLabel("Credits", systemImage: "creditcard") }
-            } header: { Text("Account") } footer: {
-                Text("Credits pay for cloud looks, colour match and batch exports. Everything else works offline.")
-            }
-
             Section {
                 LabeledContent("Username") {
                     TextField("Username", text: $ftpUser).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -48,6 +35,7 @@ struct SettingsView: View {
             }
 
             Section("Exports") {
+                NavigationLink(value: AppRoute.folderDestinations) { SettingsLabel("Saved folders", systemImage: "folder") }
                 NavigationLink(value: AppRoute.ftpDestinations) { SettingsLabel("FTP destinations", systemImage: "server.rack") }
                 NavigationLink(value: AppRoute.metadata) { SettingsLabel("Creator & copyright", systemImage: "person.text.rectangle") }
             }
@@ -57,6 +45,7 @@ struct SettingsView: View {
                 NavigationLink(value: AppRoute.testedCameras) { SettingsLabel("Tested cameras", systemImage: "camera") }
                 NavigationLink(value: AppRoute.diagnostics(wired: true)) { SettingsLabel("Check a USB cable", systemImage: "cable.connector") }
                 NavigationLink(value: AppRoute.diagnostics(wired: false)) { SettingsLabel("Check a Wi-Fi link", systemImage: "wifi") }
+                NavigationLink(value: AppRoute.ptpLog) { SettingsLabel("Camera conversation log", systemImage: "list.bullet.rectangle") }
                 Button { app.settings.hasOnboarded = false } label: { SettingsLabel("Replay the intro", systemImage: "sparkles") }
             }
 
@@ -65,17 +54,6 @@ struct SettingsView: View {
                 NavigationLink(value: AppRoute.about) { SettingsLabel("About Open Tether", systemImage: "info.circle") }
             }
 
-            Section {
-                TextField("Base URL", text: $cloudURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .onSubmit { app.applyCloudBaseURL(cloudURL) }
-                    .accessibilityLabel("Cloud base URL")
-                LabeledContent("Account", value: app.settings.accountID ?? "Not registered")
-                LabeledContent("Device", value: String(app.settings.deviceID.prefix(8)))
-                NavigationLink("PTP transaction log", value: AppRoute.ptpLog)
-                Button("Apply URL and reconnect") { app.applyCloudBaseURL(cloudURL) }
-            } header: { Text("Advanced") } footer: {
-                Text("Default cloud URL is \(AppSettings.defaultCloudBaseURL). Exports already queued keep the URL from launch.")
-            }
         }
         .listRowBackground(TetherColor.surface2)
         .tint(TetherColor.accent)
@@ -83,19 +61,9 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
         .onAppear {
-            cloudURL = app.settings.cloudBaseURL
             ftpUser = app.settings.ftpUsername
             ftpPassword = app.settings.ftpPassword
             ftpPort = String(app.settings.ftpPort)
-        }
-    }
-
-    /// Text plus glyph, so the state reads without colour.
-    @ViewBuilder private var cloudStatus: some View {
-        switch app.cloudReachable {
-        case true?: Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(TetherColor.ok)
-        case false?: Label("Offline", systemImage: "icloud.slash").foregroundStyle(TetherColor.warn)
-        case nil: Text("Checking…").foregroundStyle(TetherColor.ink1)
         }
     }
 }

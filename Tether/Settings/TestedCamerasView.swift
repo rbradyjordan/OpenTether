@@ -1,14 +1,18 @@
 import SwiftUI
 import TetherCore
 
-/// Matrix from the cloud with a built-in fallback when offline.
-struct TestedCamerasView: View {
-    @Environment(AppModel.self) private var app
-    @State private var cameras: [TetherCloudClient.TestedCamera] = TestedCamerasView.fallback
-    @State private var offline = false
-    @State private var query = ""
+/// A camera body and how it connects, for the compatibility list.
+struct TestedCamera: Identifiable, Hashable {
+    var vendor: String, model: String, transports: [String], status: String, notes: String
+    var id: String { "\(vendor)/\(model)" }
+}
 
-    private var filtered: [TetherCloudClient.TestedCamera] {
+/// The compatibility list, shipped with the app.
+struct TestedCamerasView: View {
+    @State private var query = ""
+    private let cameras = TestedCamerasView.list
+
+    private var filtered: [TestedCamera] {
         query.isEmpty ? cameras : cameras.filter { "\($0.vendor) \($0.model) \($0.notes)".localizedCaseInsensitiveContains(query) }
     }
 
@@ -16,9 +20,6 @@ struct TestedCamerasView: View {
 
     var body: some View {
         List {
-            if offline {
-                Text("Showing the built-in list; the cloud was unreachable.").font(.footnote).foregroundStyle(Theme.warning)
-            }
             ForEach(vendors, id: \.self) { vendor in
                 Section(vendor) {
                     ForEach(filtered.filter { $0.vendor == vendor }) { cam in
@@ -39,9 +40,6 @@ struct TestedCamerasView: View {
         .searchable(text: $query, prompt: "Model")
         .tetherList()
         .navigationTitle("Tested cameras")
-        .task {
-            if let remote = try? await app.cloud.testedCameras(), !remote.isEmpty { cameras = remote } else { offline = true }
-        }
     }
 
     private func color(_ status: String) -> Color {
@@ -52,7 +50,7 @@ struct TestedCamerasView: View {
         }
     }
 
-    static let fallback: [TetherCloudClient.TestedCamera] = [
+    static let list: [TestedCamera] = [
         .init(vendor: "Canon", model: "EOS R5 / R6 / R6 II", transports: ["usb", "ptpip"], status: "expected", notes: "PC / EOS Utility mode"),
         .init(vendor: "Nikon", model: "Z 6II / Z 7II / Z 8", transports: ["usb", "ptpip"], status: "expected", notes: "USB power delivery off"),
         .init(vendor: "Sony", model: "α7 IV / α7R V / α1", transports: ["usb", "ptpip"], status: "expected", notes: "PC Remote, single session"),

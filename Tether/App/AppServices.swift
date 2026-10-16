@@ -8,7 +8,6 @@ struct AppServices {
     let memory: WorkspaceMemory
     let cache: CaptureCacheProxy
     let keychain: KeychainStore
-    let tokens: KeychainTokenStore
     let previews: ImageIOPreviewGenerator
     let renderer: CoreImageLookRenderer
     let lookResolver: LookResolver
@@ -18,9 +17,6 @@ struct AppServices {
     let usbBrowser: USBCameraBrowser
     let ptpLog: PTPLog
     let ftpInbox: URL
-    /// The client the export queue was built with; `AppModel.cloud` may be newer
-    /// when the base URL was edited (takes effect for exports after relaunch).
-    let cloud: TetherCloudClient
 
     static func make() throws -> AppServices {
         let fm = FileManager.default
@@ -28,22 +24,21 @@ struct AppServices {
         let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
         let store = try SessionStore(path: support.appendingPathComponent("tether.sqlite").path)
         let memory = WorkspaceMemory(store: store)
-        let cloudURL = AppSettings.storedCloudURL(in: store)
         let cache = CaptureCacheProxy(storageRoot: support.appendingPathComponent("Captures", isDirectory: true))
         let keychain = KeychainStore()
-        let tokens = KeychainTokenStore(keychain: keychain)
-        let cloud = TetherCloudClient(baseURL: cloudURL, tokens: tokens)
-        let resolver = LookResolver(store: store) { look in try await cloud.cube(look) }
+        // Every look is on the device: the built-ins, imported cubes and colour matches.
+        BuiltInLooks.install(into: store)
+        let resolver = LookResolver(store: store)
         let renderer = CoreImageLookRenderer()
-        let sink = RoutingExportSink(photos: PhotosExportSink(store: store), files: FilesExportSink(store: store))
-        let queue = ExportQueue(store: store, cache: cache, sink: sink, renderer: renderer, cloud: cloud, looks: resolver, memory: memory,
+        let sink = RoutingExportSink(photos: PhotosExportSink(store: store), files: FilesExportSink(store: store), folders: FolderExportSink(store: store))
+        let queue = ExportQueue(store: store, cache: cache, sink: sink, renderer: renderer, looks: resolver, memory: memory,
                                 ftpClientFactory: { dest in AppServices.ftpUploader(for: dest, keychain: keychain) })
         VendorRegistry.installBuiltIns()
-        return AppServices(store: store, memory: memory, cache: cache, keychain: keychain, tokens: tokens,
+        return AppServices(store: store, memory: memory, cache: cache, keychain: keychain,
                            previews: ImageIOPreviewGenerator(), renderer: renderer, lookResolver: resolver,
                            exportQueue: queue, discovery: CameraDiscoverer(), ssid: CoreLocationSSIDMonitor(),
                            usbBrowser: USBCameraBrowser(), ptpLog: PTPLog(),
-                           ftpInbox: caches.appendingPathComponent("ftp-inbox", isDirectory: true), cloud: cloud)
+                           ftpInbox: caches.appendingPathComponent("ftp-inbox", isDirectory: true))
     }
 
     static func ftpDestination(_ stored: StoredFTPDestination, keychain: KeychainStore) -> FTPDestination {

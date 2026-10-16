@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TetherCore
 
 /// Renders a command list as menu buttons with dividers between groups.
@@ -25,7 +26,11 @@ struct CommandMenuContent: View {
 
     @ViewBuilder private func label(_ cmd: Command) -> some View {
         if cmd.id.hasPrefix("label."), let color = TetherCoreColorLabel(rawValue: String(cmd.id.dropFirst(6))), color != .none {
-            Label { Text(cmd.title) } icon: { Image(systemName: "circle.fill").foregroundStyle(ColorLabelStyle.color(for: color)) }
+            // Menus re-tint icons with the accent; an always-original image keeps the label's own colour.
+            Label { Text(cmd.title) } icon: {
+                Image(uiImage: UIImage(systemName: "circle.fill")?
+                    .withTintColor(UIColor(ColorLabelStyle.color(for: color)), renderingMode: .alwaysOriginal) ?? UIImage())
+            }
         } else {
             Label(cmd.title, systemImage: cmd.symbol)
         }

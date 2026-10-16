@@ -310,17 +310,15 @@ public struct CommandContext: Sendable {
     public var inCollection: Collection?
     public var canUndo: Bool
     public var canRedo: Bool
-    public var hasCredits: Bool
 
     public init(selectionCount: Int = 0, inLiveSession: Bool = false, cameraCapabilities: CameraCapabilities = [],
-                inCollection: Collection? = nil, canUndo: Bool = false, canRedo: Bool = false, hasCredits: Bool = true) {
+                inCollection: Collection? = nil, canUndo: Bool = false, canRedo: Bool = false) {
         self.selectionCount = selectionCount
         self.inLiveSession = inLiveSession
         self.cameraCapabilities = cameraCapabilities
         self.inCollection = inCollection
         self.canUndo = canUndo
         self.canRedo = canRedo
-        self.hasCredits = hasCredits
     }
 }
 
@@ -365,7 +363,7 @@ public enum Commands {
             out += rate + [rate0, pick, reject, unflag] + labels + [clearLabel, tag, addToCollection, newCollection]
             if let c = ctx.inCollection, c.kind == .manual { out.append(removeFromCollection) }
             out += [export, exportAgain]
-            if ctx.selectionCount == 1 && ctx.hasCredits { out.append(colorMatch) }
+            if ctx.selectionCount == 1 { out.append(colorMatch) }
             if ctx.selectionCount == 2 { out.append(compare) }
             out.append(clientReview)
         }

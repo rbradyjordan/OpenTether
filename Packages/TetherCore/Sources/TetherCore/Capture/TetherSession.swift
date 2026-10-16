@@ -77,6 +77,9 @@ public actor TetherSession {
     private var liveViewTask: Task<Void, Never>?
     private var propertyRefreshTask: Task<Void, Never>?
     private var transportHealth: TransportHealth?
+    /// Sidecars that arrived on their own (FTP push), by pair key, so the
+    /// photo or its RAW/JPEG twin picks them up whichever lands first.
+    private var pendingSidecars: [String: XMPPacket] = [:]
     /// Fans every event out to each subscriber: the shoot screen and the
     /// library both listen, and a plain `AsyncStream` would split events
     /// between them.
@@ -401,8 +404,29 @@ public actor TetherSession {
 
     // MARK: FTP push ingest
 
-    /// A file the camera pushed to our FTP server: adopt it as a capture.
-    public func ingestFile(at url: URL, from: String) async {
+    /// A file the camera pushed to our FTP server, or one imported from Files:
+    /// adopt it as a capture. `sidecar` is its XMP when the caller already
+    /// matched one (Files import); otherwise `<name>.xmp` beside it is used.
+    /// `consumeSource` deletes the file and sidecar afterwards: only for
+    /// private copies (FTP inbox, temporary import copies), never a user folder.
+    public func ingestFile(at url: URL, from: String, sidecar: URL? = nil, consumeSource: Bool = true) async {
+        // A sidecar on its own is metadata, not a frame. Cameras and Photo
+        // Mechanic send it before or after the photo: apply it to the frame
+        // (and its twin) already here, and remember it for any half of the
+        // pair still to come.
+        if url.pathExtension.lowercased() == "xmp" {
+            let key = CaptureItem.pairKey(for: url.deletingPathExtension().lastPathComponent)
+            if let data = try? Data(contentsOf: url), let packet = try? XMPPacket(parsing: data) {
+                pendingSidecars[key] = packet
+                for var target in items where target.pairKey == key {
+                    let tags = packet.applied(to: &target)
+                    upsert(target)
+                    if !tags.isEmpty { try? store.addTags(tags, to: [target.id]) }
+                }
+            }
+            if consumeSource { try? FileManager.default.removeItem(at: url) }
+            return
+        }
         let seq = (try? store.nextSequence(in: session.id)) ?? (items.count + 1)
         let name = url.lastPathComponent
         let kind = PTPObjectInfo(objectFormat: .undefined, filename: name).mediaKind
@@ -420,14 +444,18 @@ public actor TetherSession {
             // Interop: metadata that came with the file (Photo Mechanic / Capture
             // One sidecar, or an embedded packet) seeds rating, flag, label, tags.
             var incomingTags: [String] = []
-            let sidecarURL = url.deletingPathExtension().appendingPathExtension("xmp")
+            let candidates = [sidecar, url.deletingPathExtension().appendingPathExtension("xmp"), url.appendingPathExtension("xmp")].compactMap { $0 }
+            let sidecarURL = candidates.first { FileManager.default.fileExists(atPath: $0.path) } ?? candidates[0]
             if let sc = try? Data(contentsOf: sidecarURL), let packet = try? XMPPacket(parsing: sc) {
                 incomingTags = packet.applied(to: &item)
-                try? FileManager.default.removeItem(at: sidecarURL)
+                pendingSidecars[item.pairKey] = packet   // for the twin, if it comes later
+                if consumeSource { try? FileManager.default.removeItem(at: sidecarURL) }
+            } else if let packet = pendingSidecars[item.pairKey] {
+                incomingTags = packet.applied(to: &item)
             } else if kind == .jpeg, let packet = try? JPEGXMP.extract(from: data) {
                 incomingTags = packet.applied(to: &item)
             }
-            try? FileManager.default.removeItem(at: url)
+            if consumeSource { try? FileManager.default.removeItem(at: url) }
             upsert(item)
             if !incomingTags.isEmpty { try? store.addTags(incomingTags, to: [item.id]) }
         } catch {
@@ -444,6 +472,11 @@ public actor TetherSession {
     public func select(_ id: String?) {
         selectedItemID = id
         broadcaster.send(.selection(id))
+    }
+
+    public func setRouting(_ routing: RoutingRules) {
+        session.routing = routing
+        persistSession()
     }
 
     public func setShowNewestCapture(_ on: Bool) {
@@ -478,6 +511,7 @@ public actor TetherSession {
         guard var item = items.first(where: { $0.id == id }) else { return }
         item.colorLabel = item.colorLabel == color ? .none : color
         upsert(item)
+        for var twin in items where twin.pairKey == item.pairKey && twin.id != item.id { twin.colorLabel = item.colorLabel; upsert(twin) }
     }
 
     public func delete(_ id: String) {

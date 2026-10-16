@@ -85,6 +85,7 @@ struct ShootBottomBar: View {
                 Button { model.showClientReview = true } label: { Label("Client review", systemImage: "person.crop.rectangle") }
             }
             Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+            hotFolderMenu
             Divider()
             let ids = model.displayedItem.map { [$0.id] } ?? []
             CommandMenuContent(commands: app.commands.available(selection: ids, inShoot: true),
@@ -105,6 +106,22 @@ struct ShootBottomBar: View {
             .frame(minWidth: 64)
         }
         .accessibilityLabel("More actions")
+    }
+
+    /// Pick (or stop) the folder every new frame is copied into.
+    private var hotFolderMenu: some View {
+        let folders = (try? app.store.folderDestinations()) ?? []
+        let current = model.shootSession.routing.liveFolderID
+        return Menu {
+            Picker("Hot folder", selection: Binding(get: { current }, set: { app.setHotFolder($0, for: model.shootSession) })) {
+                Text("Off").tag(String?.none)
+                ForEach(folders) { f in Text(f.name).tag(String?.some(f.id)) }
+            }
+            if folders.isEmpty { Text("Add folders in Settings › Saved folders") }
+        } label: {
+            Label(current.flatMap { id in folders.first { $0.id == id }?.name }.map { "Hot folder: \($0)" } ?? "Hot folder",
+                  systemImage: "folder.badge.gearshape")
+        }
     }
 
     private func tool(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {

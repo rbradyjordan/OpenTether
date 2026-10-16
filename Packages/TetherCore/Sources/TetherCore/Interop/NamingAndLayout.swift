@@ -58,6 +58,9 @@ public struct NamingTemplate: Codable, Hashable, Sendable {
 /// a C1 session; `dated` suits Lightroom's import by date.
 public enum FolderLayout: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
     case flat, dated, bySession, captureOne, byRating
+    /// Straight into an existing Capture One session folder (no session
+    /// sub-folder): Capture / Selects / Trash / Output.
+    case captureOneSessionRoot
 
     public var id: String { rawValue }
     public var displayName: String {
@@ -66,6 +69,7 @@ public enum FolderLayout: String, Codable, Hashable, Sendable, CaseIterable, Ide
         case .dated: return "By date (yyyy/yyyy-MM-dd)"
         case .bySession: return "By session"
         case .captureOne: return "Capture One session"
+        case .captureOneSessionRoot: return "Into a Capture One session"
         case .byRating: return "By rating"
         }
     }
@@ -86,6 +90,16 @@ public enum FolderLayout: String, Codable, Hashable, Sendable, CaseIterable, Ide
             let sub = capture.flag == .pick ? "Selects" : (capture.flag == .reject ? "Trash" : "Capture")
             return "\(session)/\(sub)"
         case .byRating: return capture.rating > 0 ? "\(capture.rating) star\(capture.rating == 1 ? "" : "s")" : "Unrated"
+        case .captureOneSessionRoot: return capture.flag == .pick ? "Selects" : (capture.flag == .reject ? "Trash" : "Capture")
+        }
+    }
+
+    /// Where the manifest goes: Capture One's Output folder, else the root.
+    public func manifestDirectory(sessionName: String?) -> String {
+        switch self {
+        case .captureOne: return "\(NamingTemplate.safe(sessionName ?? "Session"))/Output"
+        case .captureOneSessionRoot: return "Output"
+        default: return ""
         }
     }
 
@@ -95,6 +109,7 @@ public enum FolderLayout: String, Codable, Hashable, Sendable, CaseIterable, Ide
         let session = NamingTemplate.safe(sessionName ?? "Session")
         switch self {
         case .captureOne: return ["Capture", "Selects", "Output", "Trash"].map { "\(session)/\($0)" }
+        case .captureOneSessionRoot: return ["Capture", "Selects", "Output", "Trash"]
         case .bySession: return [session]
         default: return []
         }

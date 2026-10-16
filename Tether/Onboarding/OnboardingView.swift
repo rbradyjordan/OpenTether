@@ -73,7 +73,6 @@ struct OnboardingView: View {
 
     private func finish() {
         app.settings.hasOnboarded = true
-        Task { await app.refreshCloud() } // registers the device; failure is tolerated
     }
 }
 

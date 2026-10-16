@@ -65,6 +65,32 @@ targets:
           - fetch
           - processing
         UISupportsDocumentBrowser: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Camera photos
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.camera-raw-image, public.jpeg, public.heic, public.heif, public.tiff, public.png]
+          - CFBundleTypeName: Lightroom and Capture One catalogs
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.lightroom.catalog, com.captureone.catalog, com.captureone.catalogdb, com.captureone.session]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.adobe.lightroom.catalog
+            UTTypeDescription: Lightroom Classic Catalog
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [lrcat] }
+          - UTTypeIdentifier: com.captureone.catalog
+            UTTypeDescription: Capture One Catalog
+            UTTypeConformsTo: [com.apple.package]
+            UTTypeTagSpecification: { public.filename-extension: [cocatalog] }
+          - UTTypeIdentifier: com.captureone.catalogdb
+            UTTypeDescription: Capture One Catalog Database
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [cocatalogdb] }
+          - UTTypeIdentifier: com.captureone.session
+            UTTypeDescription: Capture One Session
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [cosessiondb] }
         LSSupportsOpeningDocumentsInPlace: true
         UIFileSharingEnabled: true
         UIRequiresFullScreen: false

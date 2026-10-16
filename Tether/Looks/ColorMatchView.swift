@@ -1,7 +1,9 @@
+import ImageIO
 import SwiftUI
 import TetherCore
 
-/// Pick a reference and a target frame from this session; the cloud returns a LUT.
+/// Pick a reference and a target frame from this session; the match is
+/// computed on the phone (`ColorMatch`) and saved as a look.
 struct ColorMatchView: View {
     @Environment(AppModel.self) private var app
     var model: ShootViewModel
@@ -21,15 +23,6 @@ struct ColorMatchView: View {
                     VStack(alignment: .leading) {
                         Text("Strength \(Int(strength * 100))%").font(.subheadline)
                         Slider(value: $strength, in: 0.1 ... 1, step: 0.05) { Text("Strength") }.tint(Theme.accent)
-                    }
-                    HStack {
-                        Label("\(CreditsState.colorMatchCost) credit", systemImage: "creditcard")
-                        Spacer()
-                        Text("Balance \(app.credits.balance)").foregroundStyle(Theme.textSecondary)
-                    }
-                    .font(.subheadline)
-                    if app.credits.tier == .free && app.credits.balance < CreditsState.colorMatchCost {
-                        NavigationLink("Get credits", value: AppRoute.credits).font(.subheadline)
                     }
                     if let error { Text(error).font(.footnote).foregroundStyle(Theme.danger) }
                     Button {
@@ -81,18 +74,43 @@ struct ColorMatchView: View {
         do {
             let refData = try app.cache.load(ref)
             let tgtData = try app.cache.load(tgt)
-            let result = try await app.cloud.colorMatch(reference: refData, target: tgtData, strength: strength)
-            let descriptor = LookDescriptor(id: result.lutID, name: "Match \(Date().formatted(date: .omitted, time: .shortened))",
-                                            family: "Colour match", sha256: result.sha256, cubeURL: result.cubeURL)
-            let cube = try await app.cloud.cube(descriptor)
+            let k = Float(strength)
+            let cube: Data = try await Task.detached(priority: .userInitiated) {
+                guard let refPixels = ColorSampler.samples(refData), let tgtPixels = ColorSampler.samples(tgtData) else {
+                    throw ExportError.renderFailed("Could not read one of the frames")
+                }
+                return Data(ColorMatch.lut(reference: refPixels, target: tgtPixels, strength: k, title: "Colour match").serialized().utf8)
+            }.value
+            let id = "match.\(UUID().uuidString)"
+            let descriptor = LookDescriptor(id: id, name: "Match \(Date().formatted(date: .omitted, time: .shortened))",
+                                            family: "Colour match", size: 25, sha256: "", cubeURL: "local:\(id)")
             try app.store.saveLook(descriptor, cube: cube)
             app.reloadLooks()
-            await app.refreshCredits()
             model.setLook(LookStack(lookID: descriptor.id, strength: 1))
             HapticFeedback.success()
             dismiss()
         } catch {
             self.error = "\(error)"
+        }
+    }
+}
+
+/// Downsamples a frame to 64 × 64 and returns its pixels as RGB in 0…1.
+enum ColorSampler {
+    static func samples(_ data: Data, side: Int = 64) -> [SIMD3<Float>]? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: side,
+              ] as CFDictionary) else { return nil }
+        let w = image.width, h = image.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return stride(from: 0, to: bytes.count, by: 4).map {
+            SIMD3(Float(bytes[$0]) / 255, Float(bytes[$0 + 1]) / 255, Float(bytes[$0 + 2]) / 255)
         }
     }
 }

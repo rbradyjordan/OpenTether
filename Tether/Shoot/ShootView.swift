@@ -29,7 +29,7 @@ struct ShootView: View {
             .sheet(item: $model.sheet) { sheet in sheetView(sheet) }
             .fullScreenCover(isPresented: $model.showClientReview) { ClientReviewView(model: model) }
             .fullScreenCover(isPresented: $model.showLoupe) { LoupeView(model: model) }
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image, .rawImage, .movie, .data], allowsMultipleSelection: true) { result in
+            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image, .rawImage, .movie, .folder, .data], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { model.importFiles(urls) }
             }
             .confirmationDialog("End this session?", isPresented: $showEndConfirm, titleVisibility: .visible) {

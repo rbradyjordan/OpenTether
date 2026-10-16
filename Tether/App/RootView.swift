@@ -1,4 +1,5 @@
 import SwiftUI
+import TetherCore
 
 /// The one place the layout forks: compact width gets tabs, regular width
 /// gets the split view. Both reuse the same child screens.
@@ -19,6 +20,19 @@ struct RootView: View {
         }
         .background(ScreenBackground())
         .toast($app.toast)
+        .sheet(item: Binding(get: { app.pendingCatalog.map(IdentifiedURL.init) }, set: { app.pendingCatalog = $0?.url })) { item in
+            CatalogSyncSheet(catalogURL: item.url)
+        }
+        // "Open in Open Tether" from Files or another app: catalogs sync,
+        // photos (and folders) import.
+        .onOpenURL { url in
+            if CatalogKind.detect(url) != nil {
+                app.pendingCatalog = url
+            } else if url.isFileURL {
+                app.selectedTab = .library
+                Task { await app.importFromFiles([url]) }
+            }
+        }
         .commandRequests()
     }
 }

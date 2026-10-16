@@ -326,16 +326,6 @@ final class ExportQueueTests: XCTestCase {
         }
     }
 
-    func testCreditsQuote() {
-        let items = (0 ..< 5).map { ExportJob.Item(id: "\($0)", filename: "\($0).jpg", kind: .jpeg, bytes: 1) } + [ExportJob.Item(id: "r", filename: "r.cr3", kind: .raw, bytes: 1)]
-        let free = CreditsState(tier: .free, balance: 3)
-        let q = free.quote(for: items, forceWatermark: false)
-        XCTAssertEqual(q, .init(credits: 3, watermarkedItems: 2, totalItems: 6))
-        XCTAssertEqual(CreditsState(tier: .pro, balance: 0).quote(for: items, forceWatermark: false).credits, 0)
-        XCTAssertEqual(CreditsState(tier: .free, balance: 9).quote(for: items, forceWatermark: true).watermarkedItems, 5)
-        XCTAssertTrue(CreditsState(tier: .free, balance: 0).watermarkRequired)
-    }
-
     func testJobRunsPersistsAndRetries() async throws {
         let store = try SessionStore.inMemory()
         let cache = CaptureCacheProxy(storageRoot: FileManager.default.temporaryDirectory.appendingPathComponent("tether-export-\(UUID().uuidString)"))
@@ -357,10 +347,8 @@ final class ExportQueueTests: XCTestCase {
         let sink = FakeSink()
         sink.failFor = [caps[1].id]
         let queue = ExportQueue(store: store, cache: cache, sink: sink, looks: LookResolver(store: store))
-        let job = await queue.makeJob(session: shoot, captures: caps, destination: .photos, options: ExportOptions(includeRAW: false), look: .none,
-                                      credits: CreditsState(tier: .free, balance: 1))
+        let job = await queue.makeJob(session: shoot, captures: caps, destination: .photos, options: ExportOptions(includeRAW: false), look: .none)
         XCTAssertEqual(job.items.count, 3, "RAW excluded")
-        XCTAssertEqual(job.items.filter(\.watermark).count, 2)
         try await queue.enqueue(job)
 
         var finished: ExportJob?
@@ -444,21 +432,7 @@ final class DiagnosticsTests: XCTestCase {
     }
 }
 
-final class CloudClientTests: XCTestCase {
-    func testErrorMapping() {
-        let e = TetherCloudClient.error(from: #"{"error":"insufficient_credits","message":"no"}"#.data(using: .utf8)!, status: 402)
-        XCTAssertEqual(e, .insufficientCredits)
-        let h = TetherCloudClient.error(from: #"{"error":"bad_request","message":"Missing field"}"#.data(using: .utf8)!, status: 400)
-        XCTAssertEqual("\(h)", "Missing field")
-        XCTAssertEqual(TetherCloudClient.error(from: Data(), status: 500), .http(status: 500, code: "http_500", message: ""))
-    }
-
-    func testUnregisteredClientRefusesAuthedCalls() async {
-        let c = TetherCloudClient(baseURL: URL(string: "http://127.0.0.1:1")!, tokens: MemoryTokenStore())
-        XCTAssertFalse(c.isRegistered)
-        do { _ = try await c.me(); XCTFail() } catch { XCTAssertEqual(error as? CloudError, .notRegistered) }
-    }
-
+final class LookDescriptorTests: XCTestCase {
     func testLookDescriptorDecodesServerShape() throws {
         let json = #"{"id":"film-warm","name":"Film Warm","family":"film","version":1,"size":33,"sha256":"ab","cube_url":"/v1/looks/film-warm.cube","hint":{"warmth":0.3,"contrast":0.1,"saturation":-0.05}}"#
         let d = try JSONDecoder().decode(LookDescriptor.self, from: json.data(using: .utf8)!)

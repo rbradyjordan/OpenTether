@@ -60,6 +60,35 @@ public final class SQLiteDatabase: @unchecked Sendable {
         try execute("PRAGMA synchronous=NORMAL")
     }
 
+    /// Reads someone else's database through a private copy: the file and
+    /// its `-wal` / `-shm` journals are copied to a temporary folder first, so
+    /// changes the other app has not checkpointed yet are included and the
+    /// original is never opened, locked or written.
+    public static func snapshot(of path: String) throws -> SQLiteDatabase {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("catalog-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let copy = dir.appendingPathComponent((path as NSString).lastPathComponent)
+        try fm.copyItem(atPath: path, toPath: copy.path)
+        for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: path + suffix) {
+            try? fm.copyItem(atPath: path + suffix, toPath: copy.path + suffix)
+        }
+        return try SQLiteDatabase(copyAt: copy.path)
+    }
+
+    private init(copyAt path: String) throws {
+        self.path = path
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK, let h = handle else {
+            let msg = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
+            sqlite3_close(handle)
+            throw Error.open(msg)
+        }
+        db = h
+        sqlite3_busy_timeout(h, 2000)
+        try execute("PRAGMA query_only=ON")
+    }
+
     deinit { if let db { sqlite3_close_v2(db) } }
 
     public func execute(_ sql: String, _ params: [Value] = []) throws {

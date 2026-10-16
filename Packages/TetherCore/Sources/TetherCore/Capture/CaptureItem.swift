@@ -174,13 +174,18 @@ public struct ShootSession: Identifiable, Codable, Hashable, Sendable {
 /// Where each media kind goes on export (JPEG → Photos, RAW → Files by default).
 public struct RoutingRules: Codable, Hashable, Sendable {
     public enum Target: String, Codable, Sendable, CaseIterable, Identifiable {
-        case photos, files, cloud, ftp, none
+        case photos, files, ftp, none
         public var id: String { rawValue }
+
+        /// Sessions saved when a cloud target existed open as Files.
+        public init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Target(rawValue: raw) ?? .files
+        }
         public var displayName: String {
             switch self {
             case .photos: return "Photos"
             case .files: return "Files (on My iPhone)"
-            case .cloud: return "Cloud batch"
             case .ftp: return "FTP server"
             case .none: return "Keep in session only"
             }
@@ -192,13 +197,19 @@ public struct RoutingRules: Codable, Hashable, Sendable {
     public var video: Target
     public var autoExportPicks: Bool
     public var ftpDestinationID: String?
+    /// Hot folder: every frame (RAW and JPEG, with its sidecar) is copied into
+    /// this saved Files folder as soon as it lands, e.g. a Capture One
+    /// session's Capture folder or a Lightroom Auto Import folder on a share.
+    public var liveFolderID: String?
 
-    public init(jpeg: Target = .photos, raw: Target = .files, video: Target = .files, autoExportPicks: Bool = false, ftpDestinationID: String? = nil) {
+    public init(jpeg: Target = .photos, raw: Target = .files, video: Target = .files, autoExportPicks: Bool = false,
+                ftpDestinationID: String? = nil, liveFolderID: String? = nil) {
         self.jpeg = jpeg
         self.raw = raw
         self.video = video
         self.autoExportPicks = autoExportPicks
         self.ftpDestinationID = ftpDestinationID
+        self.liveFolderID = liveFolderID
     }
 
     public func target(for kind: MediaKind) -> Target {

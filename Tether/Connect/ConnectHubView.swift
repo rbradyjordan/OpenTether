@@ -148,7 +148,6 @@ struct ConnectRouteView: View {
         case .brandGuide(let vendor): BrandGuideDetailView(vendor: vendor)
         case .diagnostics(let wired): DiagnosticsView(wired: wired)
         case .sessionDetail(let id): SessionDetailView(sessionID: id)
-        case .credits: CreditsView()
         case .ftpDestinations: FTPDestinationsView()
         case .exportProgress(let sessionID): ExportProgressView(sessionID: sessionID)
         case .ptpLog: DiagnosticsLogView()
@@ -156,6 +155,7 @@ struct ConnectRouteView: View {
         case .privacy: PrivacyView()
         case .about: AboutView()
         case .metadata: MetadataSettingsView()
+        case .folderDestinations: FolderDestinationsView()
         }
     }
 }

@@ -46,7 +46,6 @@ struct ExportProgressView: View {
                 ForEach(job.items) { item in
                     HStack {
                         Text(item.filename).font(.caption).lineLimit(1)
-                        if item.watermark { Image(systemName: "drop.halffull").font(.caption2).foregroundStyle(Theme.warning).accessibilityLabel("watermarked") }
                         Spacer()
                         Text(itemState(item.state)).font(.caption2).foregroundStyle(Theme.textSecondary)
                     }
@@ -66,7 +65,6 @@ struct ExportProgressView: View {
                     }
                     .buttonStyle(.tetherPrimary).controlSize(.small)
                 }
-                if job.creditsCharged > 0 { Text("\(job.creditsCharged) credits").font(.caption).foregroundStyle(Theme.textSecondary) }
             }
         }
         .padding(.vertical, 4)
@@ -79,7 +77,7 @@ struct ExportProgressView: View {
         case .files: return "folder"
         case .share: return "square.and.arrow.up"
         case .ftp: return "server.rack"
-        case .cloudBatch: return "icloud.and.arrow.up"
+        case .folder: return "folder"
         }
     }
 

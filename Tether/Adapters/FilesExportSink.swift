@@ -55,12 +55,18 @@ final class FilesExportSink: ExportSink, @unchecked Sendable {
 struct RoutingExportSink: ExportSink {
     let photos: PhotosExportSink
     let files: FilesExportSink
+    let folders: FolderExportSink
 
     func deliver(fileURL: URL, item: ExportJob.Item, destination: ExportDestination) async throws -> String? {
         switch destination {
         case .photos: return try await photos.deliver(fileURL: fileURL, item: item, destination: destination)
         case .files, .share: return try await files.deliver(fileURL: fileURL, item: item, destination: destination)
-        case .ftp, .cloudBatch: return nil // handled inside ExportQueue
+        case .folder: return try await folders.deliver(fileURL: fileURL, item: item, destination: destination)
+        case .ftp: return nil // handled inside ExportQueue
         }
+    }
+
+    func prepareDirectories(_ directories: [String], destination: ExportDestination) async throws {
+        if case .folder = destination { try await folders.prepareDirectories(directories, destination: destination) }
     }
 }

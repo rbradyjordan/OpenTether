@@ -75,7 +75,15 @@ public struct CaptureFilter: Codable, Hashable, Sendable {
     public var exportedTo: ExportDestinationKey?
 
     /// `never` rather than `none` so `exportedTo: .none` can't be mistaken for nil.
-    public enum ExportDestinationKey: String, Codable, Hashable, Sendable { case photos, files, ftp, cloud, any, never }
+    public enum ExportDestinationKey: String, Codable, Hashable, Sendable {
+        case photos, files, ftp, any, never
+
+        /// Filters saved when a cloud destination existed read as "any export".
+        public init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = ExportDestinationKey(rawValue: raw) ?? .any
+        }
+    }
 
     public init(minRating: Int? = nil, maxRating: Int? = nil, flags: Set<CaptureFlag>? = nil, colors: Set<ColorLabel>? = nil,
                 kinds: Set<MediaKind>? = nil, sessionIDs: Set<String>? = nil, cameraIDs: Set<String>? = nil,

@@ -134,8 +134,16 @@ final class ShootViewModel {
             if previous == nil || becameReady {
                 Task { await refreshCounters() }
             }
+            // Culling on the phone flows to the hot folder's sidecar (one per
+            // RAW+JPEG pair: the RAW's, else the JPEG's).
+            if let previous, previous.state.isReady, !becameReady,
+               previous.rating != item.rating || previous.flag != item.flag || previous.colorLabel != item.colorLabel,
+               item.kind == .raw || !items.contains(where: { $0.pairKey == item.pairKey && $0.kind == .raw }) {
+                app.refreshHotFolderSidecar(item, session: shootSession)
+            }
             if becameReady {
                 TetherHaptic.frameArrived()
+                app.sendToHotFolder(item, session: shootSession)
                 if !shootSession.showNewestCapture {
                     unseenCount += 1
                     toast = ToastMessage(text: "New frame \(item.filename)", systemImage: "photo.badge.plus", action: "Show")
@@ -209,6 +217,11 @@ final class ShootViewModel {
         if let latest = items.last(where: { $0.state.isReady }) { select(latest.id) }
     }
 
+    func updateRouting(_ routing: RoutingRules) {
+        shootSession.routing = routing
+        Task { await session.setRouting(routing) }
+    }
+
     func setShowNewestCapture(_ on: Bool) {
         shootSession.showNewestCapture = on
         if on { unseenCount = 0 }
@@ -270,21 +283,10 @@ final class ShootViewModel {
         Task { await session.rename(name) }
     }
 
-    /// Files / share-sheet import: copy out of the security scope, then ingest
-    /// like an FTP push (XMP sidecars and embedded packets are adopted there).
+    /// Files / share-sheet import into this session (files or folders,
+    /// sidecars matched); see `AppModel.importFromFiles`.
     func importFiles(_ urls: [URL]) {
-        Task {
-            for url in urls {
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-                try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-                let copy = tmp.appendingPathComponent(url.lastPathComponent)
-                do { try FileManager.default.copyItem(at: url, to: copy) } catch { toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle"); continue }
-                await session.ingestFile(at: copy, from: "Files")
-            }
-            toast = ToastMessage(text: "Imported \(urls.count) file\(urls.count == 1 ? "" : "s")", systemImage: "square.and.arrow.down")
-        }
+        Task { await app.importFromFiles(urls, into: shootSession) }
     }
 
     func ingestFTPFile(_ url: URL, from: String) async {

@@ -3,14 +3,15 @@ import Observation
 import TetherCore
 import UIKit
 
-/// Root observable: owns the services, the session list, credits, looks,
+/// Root observable: owns the services, the session list, looks,
 /// export jobs, the FTP receiver and the active shoot.
 @Observable @MainActor
 final class AppModel {
     let services: AppServices
     let settings: AppSettings
-    let purchases: StoreKitPurchases
     let ftpReceiver: FTPReceiverModel
+    /// A catalog opened from Files ("Open in Open Tether"), waiting for the sync sheet.
+    var pendingCatalog: URL?
     /// Between-session memory, the undoable review editor, the library and the
     /// one command dispatcher every menu goes through.
     let memory: WorkspaceMemory
@@ -18,7 +19,6 @@ final class AppModel {
     private(set) var library: LibraryModel!
     private(set) var commands: CommandDispatcher!
 
-    private(set) var cloud: TetherCloudClient
     var store: SessionStore { services.store }
     var cache: CaptureCacheProxy { services.cache }
     var exportQueue: ExportQueue { services.exportQueue }
@@ -29,8 +29,6 @@ final class AppModel {
     var interrupted: [ShootSession] = []
     var looks: [LookDescriptor] = []
     var exportJobs: [ExportJob] = []
-    var credits = CreditsState()
-    var cloudReachable: Bool?
     var shoot: ShootViewModel?
     var selectedTab: AppTab = .shoot
     /// Regular width: the shoot screen is a full-screen cover over the split view.
@@ -46,11 +44,7 @@ final class AppModel {
     init(services: AppServices, settings: AppSettings) {
         self.services = services
         self.settings = settings
-        self.cloud = services.cloud
-        let cloudBox = CloudBox(client: services.cloud)
-        self.purchases = StoreKitPurchases(cloud: { cloudBox.client })
         self.ftpReceiver = FTPReceiverModel(inbox: services.ftpInbox, settings: settings)
-        self.cloudBox = cloudBox
         let memory = services.memory
         let editor = ReviewEditor(store: services.store, memory: memory)
         self.memory = memory
@@ -61,8 +55,6 @@ final class AppModel {
             await self?.shoot?.ingestFTPFile(url, from: from)
         }
     }
-
-    private let cloudBox: CloudBox
 
     /// Builds everything; a failure here is shown instead of the UI.
     static func boot() -> AppModel? {
@@ -82,7 +74,6 @@ final class AppModel {
         observeExports()
         library.start()
         await exportQueue.resume()
-        Task { await refreshCloud() }
     }
 
     func reloadSessions() {
@@ -114,8 +105,6 @@ final class AppModel {
                     HapticFeedback.success()
                     toast = ToastMessage(text: job.status.key == "completed" ? "Export to \(job.destination.displayName) finished" : "Export finished with errors",
                                          systemImage: job.status.key == "completed" ? "checkmark.circle" : "exclamationmark.triangle")
-                case .creditsChanged(let state):
-                    credits = state
                 }
             }
         }
@@ -125,40 +114,6 @@ final class AppModel {
         if let i = exportJobs.firstIndex(where: { $0.id == job.id }) { exportJobs[i] = job } else { exportJobs.insert(job, at: 0) }
     }
 
-    // MARK: Cloud
-
-    func applyCloudBaseURL(_ text: String) {
-        settings.cloudBaseURL = text
-        cloud = TetherCloudClient(baseURL: settings.cloudURL, tokens: services.tokens)
-        cloudBox.client = cloud
-        Task { await refreshCloud() }
-    }
-
-    func refreshCloud() async {
-        cloudReachable = await cloud.health()
-        guard cloudReachable == true else { return }
-        await registerIfNeeded()
-        if let me = try? await cloud.me() {
-            credits = me.state
-            settings.accountID = me.accountID
-        }
-        if let remote = try? await cloud.looks() {
-            for look in remote { try? store.saveLook(look, cube: nil) }
-            reloadLooks()
-        }
-    }
-
-    func registerIfNeeded() async {
-        guard !cloud.isRegistered else { return }
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
-        if let reg = try? await cloud.register(deviceID: settings.deviceID, appVersion: version) {
-            settings.accountID = reg.accountID
-        }
-    }
-
-    func refreshCredits() async {
-        if let me = try? await cloud.me() { credits = me.state }
-    }
 
     // MARK: Sessions
 
@@ -296,10 +251,4 @@ final class AppModel {
         UIApplication.shared.endBackgroundTask(backgroundTaskID)
         backgroundTaskID = .invalid
     }
-}
-
-/// Mutable reference so closures built at init see the current cloud client.
-final class CloudBox: @unchecked Sendable {
-    var client: TetherCloudClient
-    init(client: TetherCloudClient) { self.client = client }
 }

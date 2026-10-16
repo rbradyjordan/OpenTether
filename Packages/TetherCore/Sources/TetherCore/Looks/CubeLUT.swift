@@ -1,6 +1,6 @@
 import Foundation
 
-/// A look from the cloud catalog (or a colour-match result).
+/// A look: built in, imported as a `.cube`, or made by colour match.
 public struct LookDescriptor: Identifiable, Codable, Hashable, Sendable {
     public struct Hint: Codable, Hashable, Sendable {
         public var warmth: Double
@@ -200,7 +200,7 @@ public protocol LookRendering: Sendable {
     func render(image: Data, look: CubeLUT?, strength: Double, maxPixelSize: Int?) async throws -> Data
 }
 
-/// Resolves LookStack → CubeLUT via the store cache, fetching from the cloud when missing.
+/// Resolves LookStack → CubeLUT from the store (optionally fetching a missing cube).
 public final class LookResolver: @unchecked Sendable {
     private let store: SessionStore
     private let fetch: (@Sendable (LookDescriptor) async throws -> Data)?

@@ -37,6 +37,7 @@ public final class SessionStore: @unchecked Sendable {
         )
         """)
         try db.execute("CREATE TABLE IF NOT EXISTS ftp_destinations (id TEXT PRIMARY KEY, json TEXT NOT NULL)")
+        try db.execute("CREATE TABLE IF NOT EXISTS folder_destinations (id TEXT PRIMARY KEY, json TEXT NOT NULL)")
         try db.execute("""
         CREATE TABLE IF NOT EXISTS looks (
             id TEXT PRIMARY KEY, name TEXT NOT NULL, family TEXT NOT NULL, version INTEGER NOT NULL,
@@ -198,6 +199,25 @@ public final class SessionStore: @unchecked Sendable {
         try db.execute("DELETE FROM ftp_destinations WHERE id = ?", [.text(id)])
     }
 
+    // MARK: Folder destinations
+
+    public func save(_ d: StoredFolderDestination) throws {
+        try db.execute("INSERT INTO folder_destinations (id, json) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET json=excluded.json", [.text(d.id), .json(d)])
+    }
+
+    public func folderDestinations() throws -> [StoredFolderDestination] {
+        try db.query("SELECT json FROM folder_destinations").compactMap { $0["json"]?.decoded(StoredFolderDestination.self) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    public func folderDestination(_ id: String) throws -> StoredFolderDestination? {
+        try db.query("SELECT json FROM folder_destinations WHERE id = ?", [.text(id)]).first?["json"]?.decoded(StoredFolderDestination.self)
+    }
+
+    public func deleteFolderDestination(_ id: String) throws {
+        try db.execute("DELETE FROM folder_destinations WHERE id = ?", [.text(id)])
+    }
+
     // MARK: Known cameras (for the "reconnect" shortcut)
 
     public func rememberCamera(_ c: CameraIdentity, host: String?) throws {
@@ -226,6 +246,52 @@ public final class SessionStore: @unchecked Sendable {
         } else {
             try? db.execute("DELETE FROM settings WHERE key = ?", [.text(key)])
         }
+    }
+}
+
+/// A folder the user picked in the Files app. The bookmark is opaque here;
+/// the app resolves it (security-scoped on device). `kind` records what the
+/// folder looked like when picked, so exports can follow that tool's layout.
+public struct StoredFolderDestination: Identifiable, Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
+        /// Any folder.
+        case plain
+        /// The root of a Capture One session (it holds a `.cosessiondb`):
+        /// files go straight into its Capture / Selects / Trash folders.
+        case captureOneSession
+        /// A folder Lightroom Classic watches (Auto Import): flat, sidecar first.
+        case lightroomAutoImport
+    }
+
+    public var id: String
+    public var name: String
+    public var bookmark: Data
+    public var kind: Kind
+    /// Last resolved path, for display only ("iCloud Drive › Shoots").
+    public var displayPath: String?
+
+    public init(id: String = UUID().uuidString, name: String, bookmark: Data, kind: Kind = .plain, displayPath: String? = nil) {
+        self.id = id
+        self.name = name
+        self.bookmark = bookmark
+        self.kind = kind
+        self.displayPath = displayPath
+    }
+
+    /// The layout exports into this folder should use by default.
+    public var suggestedLayout: FolderLayout? {
+        switch kind {
+        case .plain: return nil
+        case .captureOneSession: return .captureOneSessionRoot
+        case .lightroomAutoImport: return .flat
+        }
+    }
+
+    /// Recognise a Capture One session root from the names of its entries.
+    public static func detectKind(entries: [String]) -> Kind {
+        let lower = entries.map { $0.lowercased() }
+        if lower.contains(where: { $0.hasSuffix(".cosessiondb") }) { return .captureOneSession }
+        return .plain
     }
 }
 
