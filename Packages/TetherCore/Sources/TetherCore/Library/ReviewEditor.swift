@@ -187,18 +187,23 @@ public actor ReviewEditor {
 
     // MARK: Undo / redo
 
-    public func undo() async throws {
-        guard let edit = undoStack.popLast() else { return }
+    /// Returns the edit that was undone (title + count for the toast).
+    @discardableResult
+    public func undo() async throws -> ReviewEdit? {
+        guard let edit = undoStack.popLast() else { return nil }
         try await revert(edit)
         redoStack.append(edit)
         announce()
+        return edit
     }
 
-    public func redo() async throws {
-        guard let edit = redoStack.popLast() else { return }
+    @discardableResult
+    public func redo() async throws -> ReviewEdit? {
+        guard let edit = redoStack.popLast() else { return nil }
         try await reapply(edit)
         undoStack.append(edit)
         announce()
+        return edit
     }
 
     private func push(_ e: ReviewEdit) {
@@ -328,7 +333,7 @@ public enum Commands {
     public static let labels = ColorLabel.allCases.filter { $0 != .none }.map { Command(id: "label.\($0.rawValue)", title: "Label \($0.rawValue)", symbol: "circle.fill", group: .review) }
     public static let clearLabel = Command(id: "label.none", title: "Clear label", symbol: "circle", group: .review)
     public static let tag = Command(id: "tag.add", title: "Add tags…", symbol: "number", group: .organize, shortcut: "T")
-    public static let addToCollection = Command(id: "collection.add", title: "Add to collection…", symbol: "rectangle.stack.badge.plus", group: .organize, shortcut: "⌘K")
+    public static let addToCollection = Command(id: "collection.add", title: "Add to collection…", symbol: "rectangle.stack.badge.plus", group: .organize, shortcut: "⇧⌘K")
     public static let newCollection = Command(id: "collection.new", title: "New collection from selection", symbol: "plus.rectangle.on.rectangle", group: .organize)
     public static let removeFromCollection = Command(id: "collection.remove", title: "Remove from this collection", symbol: "rectangle.stack.badge.minus", group: .organize, shortcut: "⌫")
     public static let saveSmart = Command(id: "collection.smart", title: "Save filter as smart collection", symbol: "sparkles.rectangle.stack", group: .organize)

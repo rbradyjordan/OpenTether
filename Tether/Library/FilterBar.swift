@@ -140,16 +140,28 @@ struct FilterChips: View {
         Menu {
             ForEach(sessions.prefix(20)) { s in Button { toggle(&filter.sessionIDs, s.id) } label: { Label(s.name, systemImage: filter.sessionIDs?.contains(s.id) == true ? "checkmark" : "rectangle.stack") } }
             Button("Any session") { filter.sessionIDs = nil }
-        } label: { chipLabel(filter.sessionIDs.map { $0.count == 1 ? (sessions.first { s in $0.contains(s.id) }?.name ?? "1 session") : "\($0.count) sessions" } ?? "Session", "rectangle.stack") }
+        } label: { chipLabel(sessionTitle, "rectangle.stack") }
             .buttonStyle(ChipStyle(selected: filter.sessionIDs != nil))
+    }
+
+    private var sessionTitle: String {
+        guard let ids = filter.sessionIDs else { return "Session" }
+        if ids.count == 1, let only = ids.first { return sessions.first { $0.id == only }?.name ?? "1 session" }
+        return "\(ids.count) sessions"
     }
 
     private var cameraChip: some View {
         Menu {
             ForEach(cameras) { c in Button { toggle(&filter.cameraIDs, c.id) } label: { Label(c.displayName, systemImage: filter.cameraIDs?.contains(c.id) == true ? "checkmark" : "camera") } }
             Button("Any camera") { filter.cameraIDs = nil }
-        } label: { chipLabel(filter.cameraIDs.map { $0.count == 1 ? (cameras.first { c in $0.contains(c.id) }?.displayName ?? "1 camera") : "\($0.count) cameras" } ?? "Camera", "camera") }
+        } label: { chipLabel(cameraTitle, "camera") }
             .buttonStyle(ChipStyle(selected: filter.cameraIDs != nil))
+    }
+
+    private var cameraTitle: String {
+        guard let ids = filter.cameraIDs else { return "Camera" }
+        if ids.count == 1, let only = ids.first { return cameras.first { $0.id == only }?.displayName ?? "1 camera" }
+        return "\(ids.count) cameras"
     }
 
     private var exportedChip: some View {

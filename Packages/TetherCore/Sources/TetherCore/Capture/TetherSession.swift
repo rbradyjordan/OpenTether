@@ -494,10 +494,15 @@ public actor TetherSession {
 
     /// The library edited one of our captures (rating, flag, label): take the
     /// stored version so the filmstrip agrees without a second write.
-    public func replaceFromStore(_ item: CaptureItem) {
+    public func replaceFromStore(_ item: CaptureItem) async {
         guard item.sessionID == session.id, let i = items.firstIndex(where: { $0.id == item.id }) else { return }
+        let previousRating = items[i].rating
         items[i] = item
         continuation.yield(.capture(item))
+        // Library edits reach the camera too when it keeps ratings.
+        if item.rating != previousRating, let handler, handler.capabilities.contains(.rating) {
+            try? await handler.setRating(handle: item.handle, stars: item.rating)
+        }
     }
 
     // MARK: Internals

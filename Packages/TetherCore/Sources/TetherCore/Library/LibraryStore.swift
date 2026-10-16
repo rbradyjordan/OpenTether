@@ -142,17 +142,20 @@ public extension SessionStore {
 
     /// Contents of any collection: smart ones run their rule, manual ones
     /// keep their hand order (optionally narrowed by an extra filter).
-    func captures(in collection: Collection, narrowedBy extra: CaptureFilter? = nil, sort: CaptureSort? = nil) throws -> [CaptureItem] {
+    func captures(in collection: Collection, narrowedBy extra: CaptureFilter? = nil, sort: CaptureSort? = nil,
+                  limit: Int? = nil, offset: Int = 0) throws -> [CaptureItem] {
         switch collection.kind {
         case .smart:
             var rule = collection.rule ?? CaptureFilter()
             if let extra { rule = rule.merged(with: extra) }
-            return try captures(matching: rule, sort: sort ?? .captureTimeDescending)
+            return try captures(matching: rule, sort: sort ?? .captureTimeDescending, limit: limit, offset: offset)
         case .manual:
             let (w, p) = (extra ?? CaptureFilter(readyOnly: false)).sql()
             let order = sort.map { $0.orderBy } ?? "ci.position ASC"
-            return try db.query("SELECT c.json FROM collection_items ci JOIN captures c ON c.id = ci.capture_id WHERE ci.collection_id = ? AND \(w) ORDER BY \(order)",
-                                [.text(collection.id)] + p).compactMap { $0["json"]?.decoded(CaptureItem.self) }
+            var sql = "SELECT c.json FROM collection_items ci JOIN captures c ON c.id = ci.capture_id WHERE ci.collection_id = ? AND \(w) ORDER BY \(order)"
+            var params: [SQLiteDatabase.Value] = [.text(collection.id)] + p
+            if let limit { sql += " LIMIT ? OFFSET ?"; params += [.init(limit), .init(offset)] }
+            return try db.query(sql, params).compactMap { $0["json"]?.decoded(CaptureItem.self) }
         }
     }
 

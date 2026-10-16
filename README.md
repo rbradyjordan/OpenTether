@@ -45,7 +45,7 @@ tether-ios/
 | Library: collections, smart filters, tags, between-session memory, undoable batch edits, command registry, automations | Complete | 14 power-user scenario tests (bulk cull + undo, collections under deletes, templates and camera memory across relaunch, auto-export picks, 20k-frame speed) |
 | Interop: XMP (Lightroom / Capture One / Photo Mechanic conventions), EXIF, naming templates, folder layouts, manifests, ingest of incoming XMP | Complete | 9 tests incl. an end-to-end export into a Capture One tree with sidecars, embedded XMP and manifests (`docs/INTEROP.md`) |
 | Cloud backend | Complete | `cargo test` (36), fmt + clippy clean |
-| SwiftUI app | Written; every screen (80 files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
+| SwiftUI app | Written; every screen, adaptive iPhone tabs / iPad three-column split, library + collections + inspector, command palette and shortcuts, templates, metadata settings (110+ files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
 
 Nothing has touched a real camera. Every vendor opcode or property code that
 was not certain is marked `// VERIFY` in the vendor's single code table, so

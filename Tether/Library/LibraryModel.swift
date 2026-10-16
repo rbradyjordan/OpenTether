@@ -47,7 +47,8 @@ final class LibraryModel {
     private(set) var collection: Collection = Collection.builtIns[0]
     var filter = CaptureFilter() { didSet { if filter != oldValue { viewChanged(reload: true) } } }
     var sort: CaptureSort = .captureTimeDescending { didSet { if sort != oldValue { viewChanged(reload: true) } } }
-    var columns = 3 { didSet { columns = GridMath.clampColumns(columns); if columns != oldValue { viewChanged(reload: false) } } }
+    /// Callers clamp through `GridMath`; the pinch and zoom menu already stay in 2…6.
+    var columns = 3 { didSet { if columns != oldValue { viewChanged(reload: false) } } }
     var stackPairs = true { didSet { if stackPairs != oldValue { viewChanged(reload: false) } } }
     var inspectorOpen = false { didSet { if inspectorOpen != oldValue { viewChanged(reload: false) } } }
     var scrollToCaptureID: String?
@@ -149,7 +150,7 @@ final class LibraryModel {
         }
         filter = state.filter
         sort = state.sort
-        columns = state.columns
+        columns = GridMath.clampColumns(state.columns)
         stackPairs = state.stackPairs
         inspectorOpen = state.inspectorOpen
         scrollToCaptureID = state.scrollToCaptureID

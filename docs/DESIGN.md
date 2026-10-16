@@ -130,3 +130,81 @@ Every control has a label and a value; colour is never the only signal
 shoot screen's hidden-UI mode still exposes capture and rating to
 VoiceOver via custom actions; Dynamic Type up to accessibility XL on every
 screen except the canvas overlays, which cap at XXL.
+
+## Library
+
+The library is every frame from every session in one grid, plus collections.
+It follows the Home scheme (system light/dark); the loupe and client review
+force dark as before.
+
+### Layout
+| Width | Arrangement |
+|-------|-------------|
+| Compact (iPhone) | Tabs: Shoot/Connect · **Library** · Sessions · Settings. The Library tab is a stack: source list → grid; the inspector is a sheet (medium/large detents). |
+| Regular (iPad, wide iPhone landscape) | `NavigationSplitView`, balanced: sidebar 320 pt (sources) · content (grid) · detail (inspector, toggled, ~360 pt). The shoot screen is a full-screen cover; a persistent accent "Live · camera" pill at the bottom brings it back from anywhere. |
+
+The fork lives in one place (`RootView` on `horizontalSizeClass`); every child
+view is shared.
+
+### Sidebar
+Sections in order: Shoot (regular only) · Library (built-ins: All, Picks,
+Five stars, Unrated, Today, Rejects) · Pinned · My collections (drag to
+reorder, New collection, New smart collection from current filter) · Smart
+collections · Sessions · Cameras. Each row: symbol (tinted by the
+collection's label colour), name, count in `hud` type. Swipe leading = pin,
+trailing = rename / delete (never on built-ins); the same actions in the
+context menu.
+
+### Grid and tile anatomy
+`LazyVGrid`, 2–6 columns, 2-pt gutters; pinch snaps between levels (one
+`rate` haptic per step), the zoom menu names them "N per row". RAW+JPEG pairs
+collapse to one tile with an `R+J` badge; "Expand stack" lives in the tile's
+context menu. Tile corners: top-left flag (ok) / reject (danger) + label dot;
+top-right RAW or R+J badge; bottom-left rating dots; bottom-right look dot.
+Not-ready frames dim to 45 % under a download ring; rejects dim to 40 %.
+Selection: `Select` button or the context menu enters selection mode; a tile
+shows a checkmark circle, selected tiles scale to 0.96 with an accent 2-pt
+ring; a drag across tiles range-selects from the first tile touched.
+
+### Filter bar
+One scrolling chip row (`hud` type, 32 pt chips inside 44 pt targets):
+rating ≥, flag, colour, kind, tags (autocomplete from tag history), date,
+session, camera, exported. Active chips use the chip-selected style; a
+leading accent chip shows `CaptureFilter.summary` and clears everything.
+"Save as smart collection" appears at the end when a filter is active. The
+same chips edit a smart collection's rule in the editor with a live count.
+
+### Batch bar
+Slides up from the bottom (`arrive`) when the selection is non-empty: "N
+selected · Clear", then quick commands (1–5 ★, pick, reject, tag, collect,
+export) as 52-pt buttons and a More menu with the rest. Every entry comes
+from `Commands.available(in:)`; nothing is hand-listed.
+
+### Command palette and shortcuts
+⌘K (iPad keyboard) or the title menu (iPhone) opens a medium sheet with a
+search field; results are grouped by command group with symbol and shortcut
+hint; Return runs the highlighted (first) result. Every command's shortcut
+hint is parsed into a real `.keyboardShortcut` on iPad. The palette owns ⌘K,
+so "Add to collection…" has no key binding.
+
+### Undo
+Toolbar Undo/Redo carry the editor's titles ("Undo Rate 5★"), ⌘Z / ⇧⌘Z on
+iPad, shake on iPhone. A toast "Undid Rate 5★" confirms. Every rating, flag,
+label, tag and collection change in the library, loupe, inspector and
+filmstrip goes through `ReviewEditor`, so all of them are undoable and the
+shoot screen and library never disagree.
+
+### Inspector
+Large preview (tap → loupe), facts (session, camera, lens, exposure, size,
+captured time, look, EXIF time), review controls, tag editor with recent
+tags, collections it belongs to (add/remove), export history, "Reveal in
+session".
+
+### What memory restores
+Per source (collection, session, camera): filter, sort, columns, stack
+pairs, inspector open, last frame scrolled to. Globally: the last source
+(Home's "Continue where you left off"), the last export (destination,
+options, scope → "Export like last time"), recent tags / collections /
+searches, per-camera look + destination + exposure (offered on reconnect as a
+one-line banner), session templates (New Session's card row) and the
+metadata profile.
