@@ -2,7 +2,7 @@ import SwiftUI
 import TetherCore
 
 /// Large session card: name, meta line, counts, and a 3-up strip of the
-/// newest frames. Follows the system scheme (Home is a light screen).
+/// newest frames.
 struct SessionCard: View {
     @Environment(AppModel.self) private var app
     var session: ShootSession

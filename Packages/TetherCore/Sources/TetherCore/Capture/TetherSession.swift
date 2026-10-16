@@ -77,8 +77,12 @@ public actor TetherSession {
     private var liveViewTask: Task<Void, Never>?
     private var propertyRefreshTask: Task<Void, Never>?
     private var transportHealth: TransportHealth?
-    private let continuation: AsyncStream<Event>.Continuation
-    public nonisolated let events: AsyncStream<Event>
+    /// Fans every event out to each subscriber: the shoot screen and the
+    /// library both listen, and a plain `AsyncStream` would split events
+    /// between them.
+    private let broadcaster = ValueBroadcaster<Event>()
+    /// A new stream of every event from now on; each caller gets its own.
+    public nonisolated var events: AsyncStream<Event> { broadcaster.stream(replayLatest: false) }
 
     /// Properties shown on the shoot screen; vendors fill what they have.
     public static let trackedProperties: [TetherProperty] = [.shutterSpeed, .aperture, .iso, .exposureCompensation, .whiteBalance, .batteryLevel, .captureDestination, .storageFreeImages, .exposureProgram, .driveMode, .focusMode]
@@ -92,9 +96,6 @@ public actor TetherSession {
         self.store = store
         self.cache = cache
         self.previews = previews
-        var c: AsyncStream<Event>.Continuation!
-        events = AsyncStream(bufferingPolicy: .bufferingNewest(512)) { c = $0 }
-        continuation = c
         items = (try? store.captures(in: session.id)) ?? []
         knownHandles = Set(items.map(\.handle))
         selectedItemID = items.last { $0.state.isReady }?.id
@@ -213,7 +214,7 @@ public actor TetherSession {
         if let i = properties.firstIndex(where: { $0.property == property }) {
             properties[i].raw = raw
             properties[i].display = properties[i].choices.first { $0.raw == raw }?.display ?? properties[i].display
-            continuation.yield(.properties(properties))
+            broadcaster.send(.properties(properties))
         }
         scheduleRefresh(after: 0.4)
     }
@@ -222,7 +223,7 @@ public actor TetherSession {
         guard let handler else { return }
         if let p = try? await handler.readProperties(Self.trackedProperties) {
             properties = p
-            continuation.yield(.properties(p))
+            broadcaster.send(.properties(p))
         }
     }
 
@@ -254,7 +255,7 @@ public actor TetherSession {
                     if var frame = try await handler.nextLiveViewFrame() {
                         sequence += 1
                         frame.sequence = sequence
-                        self.continuation.yield(.liveView(frame))
+                        self.broadcaster.send(.liveView(frame))
                     } else {
                         try await Task.sleep(nanoseconds: 33_000_000)
                     }
@@ -380,7 +381,7 @@ public actor TetherSession {
     private func progress(id: String, received: Int, total: Int?) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         items[i].state = .downloading(received: received, total: total ?? (items[i].bytes > 0 ? items[i].bytes : nil))
-        continuation.yield(.capture(items[i]))
+        broadcaster.send(.capture(items[i]))
     }
 
     /// Captures left half-downloaded by a crash: card objects can be fetched
@@ -442,7 +443,7 @@ public actor TetherSession {
 
     public func select(_ id: String?) {
         selectedItemID = id
-        continuation.yield(.selection(id))
+        broadcaster.send(.selection(id))
     }
 
     public func setShowNewestCapture(_ on: Bool) {
@@ -498,7 +499,7 @@ public actor TetherSession {
         guard item.sessionID == session.id, let i = items.firstIndex(where: { $0.id == item.id }) else { return }
         let previousRating = items[i].rating
         items[i] = item
-        continuation.yield(.capture(item))
+        broadcaster.send(.capture(item))
         // Library edits reach the camera too when it keeps ratings.
         if item.rating != previousRating, let handler, handler.capabilities.contains(.rating) {
             try? await handler.setRating(handle: item.handle, stars: item.rating)
@@ -510,17 +511,17 @@ public actor TetherSession {
     private func upsert(_ item: CaptureItem) {
         if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
         try? store.save(item)
-        continuation.yield(.capture(item))
+        broadcaster.send(.capture(item))
     }
 
     private func persistSession() { try? store.save(session) }
 
     private func setStatus(_ s: Status) {
         status = s
-        continuation.yield(.status(s))
+        broadcaster.send(.status(s))
     }
 
-    private func warn(_ s: String) { continuation.yield(.warning(s)) }
+    private func warn(_ s: String) { broadcaster.send(.warning(s)) }
 
     public func updateTransportHealth(_ h: TransportHealth) { transportHealth = h }
 }

@@ -55,12 +55,12 @@ struct LooksSheet: View {
                         Label("AI colour match from a reference frame", systemImage: "wand.and.stars")
                             .frame(maxWidth: .infinity, minHeight: TetherHit.min)
                     }
-                    .buttonStyle(.bordered).tint(TetherColor.ink1)
+                    .buttonStyle(.tetherSecondary).tint(TetherColor.ink1)
                     .disabled(model.readyItems.isEmpty)
                 }
                 .padding(TetherSpace.l)
             }
-            .background(TetherColor.surface1)
+            .tetherScreen()
             .navigationTitle("Looks")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

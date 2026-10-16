@@ -48,6 +48,7 @@ struct TemplateEditor: View {
                     Section { Button("Delete template", role: .destructive) { app.memory.deleteTemplate(template.id); dismiss() } }
                 }
             }
+            .tetherList()
             .navigationTitle(isNew ? "Save as template" : "Edit template")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

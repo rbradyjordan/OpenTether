@@ -15,7 +15,7 @@ struct WiFiConnectView: View {
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle("Wi-Fi")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -82,7 +82,7 @@ struct WiFiConnectView: View {
             } else {
                 Text("Network name unavailable").font(.subheadline).foregroundStyle(Theme.textSecondary)
                 if model.ssidAuthorization == .notDetermined {
-                    Button("Allow reading the network name") { model.requestSSIDAccess() }.buttonStyle(.bordered).controlSize(.small)
+                    Button("Allow reading the network name") { model.requestSSIDAccess() }.buttonStyle(.tetherSecondary).controlSize(.small)
                 }
             }
             Text("Open Tether never joins a Wi-Fi network for you.").font(.caption).foregroundStyle(Theme.textSecondary)
@@ -91,7 +91,7 @@ struct WiFiConnectView: View {
             } label: {
                 Label("Open Wi-Fi Settings", systemImage: "arrow.up.forward.app")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.tetherSecondary)
         }
     }
 
@@ -113,7 +113,7 @@ struct WiFiConnectView: View {
                 ProgressView().controlSize(.small)
             } else {
                 Button("Connect") { model.connect(camera, shoot: SessionPickerField.resolve(session, app: app), app: app) }
-                    .buttonStyle(.borderedProminent).controlSize(.small).disabled(model.isConnecting)
+                    .buttonStyle(.tetherPrimary).controlSize(.small).disabled(model.isConnecting)
                     .accessibilityLabel("Connect to \(camera.name)")
             }
         }

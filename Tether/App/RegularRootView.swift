@@ -98,6 +98,6 @@ struct InspectorPlaceholder: View {
     var body: some View {
         EmptyState(systemImage: "sidebar.right", title: "Inspector",
                    message: "Select a photo and open the inspector to see its details.")
-            .background(TetherColor.surface1)
+            .tetherScreen()
     }
 }

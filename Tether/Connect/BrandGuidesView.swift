@@ -22,8 +22,7 @@ struct BrandGuidesView: View {
                 Text("Any other PTP camera imports over USB: Open Tether watches for new files and downloads them, without remote capture.")
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("Setup guides")
     }
 
@@ -57,7 +56,7 @@ struct BrandGuideDetailView: View {
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle(vendor.displayName)
     }
 

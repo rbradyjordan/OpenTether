@@ -20,8 +20,7 @@ struct DiagnosticsLogView: View {
                 .listRowBackground(entry.error == nil ? Theme.surface : Theme.danger.opacity(0.15))
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("PTP log")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

@@ -17,8 +17,7 @@ struct ExportProgressView: View {
             }
             ForEach(jobs) { job in jobRow(job) }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("Exports")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -56,7 +55,7 @@ struct ExportProgressView: View {
             .font(.subheadline)
             HStack {
                 if !job.failedItems.isEmpty || job.status.key == "failed" {
-                    Button("Retry failed") { Task { try? await app.exportQueue.retry(job.id) } }.buttonStyle(.bordered).controlSize(.small)
+                    Button("Retry failed") { Task { try? await app.exportQueue.retry(job.id) } }.buttonStyle(.tetherSecondary).controlSize(.small)
                 }
                 if case .share = job.destination, job.status.key == "completed" {
                     Button("Share files") {
@@ -65,7 +64,7 @@ struct ExportProgressView: View {
                             return nil
                         }
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .buttonStyle(.tetherPrimary).controlSize(.small)
                 }
                 if job.creditsCharged > 0 { Text("\(job.creditsCharged) credits").font(.caption).foregroundStyle(Theme.textSecondary) }
             }

@@ -10,8 +10,12 @@ struct AboutView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Image(systemName: "camera.aperture").font(.system(size: 56)).foregroundStyle(Theme.accent).padding(.top, 30)
-                Text("Open Tether").font(.largeTitle.weight(.bold))
+                Image("BrandIcon").resizable().interpolation(.high).scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .shadow(color: TetherColor.accent.opacity(0.35), radius: 30, y: 10)
+                    .padding(.top, 24)
+                    .accessibilityHidden(true)
+                Text("Open Tether").font(.system(.largeTitle, design: .rounded, weight: .bold))
                 Text("Version \(version)").foregroundStyle(Theme.textSecondary)
                 Text("Camera tethering for iPhone and iPad: USB-C, Wi-Fi and FTP push, with looks, client review and resumable exports.")
                     .multilineTextAlignment(.center).font(.subheadline).padding(.horizontal)
@@ -19,7 +23,7 @@ struct AboutView: View {
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle("About")
     }
 }

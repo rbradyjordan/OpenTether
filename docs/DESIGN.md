@@ -1,4 +1,4 @@
-# Tether design system
+# Open Tether design system
 
 The tether is the front door of a shoot. On set, the photographer looks at
 the phone for a second between frames, in the dark, often one-handed, often
@@ -26,25 +26,35 @@ with a client over their shoulder. Every decision below follows from that.
 ## Tokens (`Tether/Components/Theme.swift`)
 
 ### Colour
-| Token | Light | Dark (default on shoot screens) | Use |
-|-------|-------|--------------------------------|-----|
-| `ink0` | `#0B0B0C` | `#F5F4F0` | primary text |
-| `ink1` | `#4A4A4F` | `#B8B7B2` | secondary text |
-| `ink2` | `#8A8A90` | `#7A7975` | tertiary / metadata |
-| `surface0` | `#FFFFFF` | `#000000` | shoot canvas background (true black on OLED) |
-| `surface1` | `#F6F5F2` | `#121214` | screens |
-| `surface2` | `#ECEAE5` | `#1C1C20` | cards |
-| `surface3` | `#E0DED8` | `#26262B` | raised / pressed |
-| `hairline` | `rgba(0,0,0,.08)` | `rgba(255,255,255,.08)` | separators |
-| `accent` | `#FF5A1F` | `#FF6A2C` | live, record, capture, selected |
-| `accentSoft` | `rgba(255,90,31,.14)` | `rgba(255,106,44,.18)` | selection fills |
-| `ok` | `#2BB673` | `#3DD68C` | connected, ready, delivered |
-| `warn` | `#E8A317` | `#F2B63D` | battery low, watermark, warnings |
-| `danger` | `#E23D3D` | `#FF5C5C` | disconnected, failed, reject |
-| `pick` | `#FFC53D` | `#FFD166` | star fill |
+Open Tether is **always dark**: graphite, brushed steel and a lens-blue accent,
+taken from the app icon. `TetherApp` pins the colour scheme; every token has
+one value.
+
+| Token | Value | Use |
+|-------|-------|-----|
+| `ink0` | `#F2F4F7` | primary text |
+| `ink1` | `#A9B0BB` | secondary text |
+| `ink2` | `#6B7380` | tertiary / metadata |
+| `surface0` | `#000000` | shoot canvas (true black on OLED) |
+| `surface1` | `#0A0B0E` | screens (under `ScreenBackground`) |
+| `surface2` | `#14161B` | cards, list rows |
+| `surface3` | `#1E2128` | raised / pressed, fields |
+| `hairline` | `rgba(255,255,255,.09)` | separators |
+| `steel` | `#8C939E` | brushed-steel neutral |
+| `accent` | `#4A9DFF` | live, capture, selected, primary actions |
+| `accentDeep` | `#2F6FF0` | bottom of the accent gradient |
+| `accentSoft` | `rgba(74,157,255,.16)` | selection fills |
+| `ok` | `#3DD68C` | connected, ready, delivered |
+| `warn` | `#F2B63D` | battery low, watermark, offline |
+| `danger` | `#FF5C5C` | disconnected, failed, reject |
+| `pick` | `#FFD166` | star fill |
+
+Surfaces are **flat Liquid Glass** (`glassEffect`, iOS 26+; a flat
+ultra-thin material before that): no gradients, no drop shadows, no bevelled
+edges. Glass sits on the ambient `ScreenBackground` so it has colour to bend.
 
 Colour labels: red `#FF5C5C`, yellow `#FFD166`, green `#3DD68C`, blue `#4C8DFF`,
-purple `#B07CFF` (same in both schemes).
+purple `#B07CFF`.
 
 ### Type
 System font (SF Pro) with these roles only; Dynamic Type via text styles,
@@ -63,8 +73,26 @@ numerals use `.monospacedDigit()`:
 
 ### Spacing and shape
 4-pt grid: `xs 4 · s 8 · m 12 · l 16 · xl 24 · xxl 32`. Radii: `card 20`,
-`control 14`, `chip 10`, `pill 999`. Hairline borders at 0.5 pt instead of
-shadows in dark mode; a single 24-pt blur `rgba(0,0,0,.35)` shadow in light.
+`control 14`, `chip 10`, `pill 999`. Cards are glass (`.tetherCard()` /
+`.tetherGlassCard()`); things that sit on glass (icon tiles, fields, chips)
+are flat translucent fills, never glass on glass.
+
+### Components (`Components/Surfaces.swift`)
+- `ScreenBackground` / `.tetherScreen()`: graphite with a faint blue glow from
+  the top; every non-canvas screen. `.tetherList()` does the same for lists
+  and forms.
+- `.tetherGlass(in:tint:interactive:)`: the one glass primitive.
+- `.tetherPrimary` / `.tetherSecondary` button styles: accent-tinted glass
+  capsule; clear glass capsule with an accent label. Interactive glass, sized
+  by `controlSize`.
+- `IconTile`: symbol in a flat rounded tile (accent fill when active) for hub
+  cards, settings rows and section headers.
+- `.textFieldStyle(.tether)` and `LabeledField`: flat translucent fields with a
+  caption label, so a filled-in value still says what it is.
+- `.staggeredAppear(i)`: card stacks rise in one after another.
+- `ScreenIntro`: one line under a large title saying what to do here.
+
+Titles use SF Pro Rounded bold (navigation bars and display text).
 
 ### Motion
 | Name | Spring | Use |
@@ -119,9 +147,8 @@ Home (sessions as large cards with a 3-up thumbnail strip, resume banner on
 top) → Connect hub → USB / Wi-Fi / FTP → Shoot → Loupe / Compare / Client
 review → Looks sheet → Export sheet → Progress → Credits → Settings.
 
-Light scheme is used for Home, Sessions, Settings, Credits; the dark
-scheme is forced on Connect-progress, Shoot, Review and Looks regardless of
-system setting (image-first screens).
+Every screen is dark. The splash shows the app icon with a blue bloom and a
+light sweep, then fades into the app once launch work is done.
 
 ## Accessibility
 
@@ -134,8 +161,7 @@ screen except the canvas overlays, which cap at XXL.
 ## Library
 
 The library is every frame from every session in one grid, plus collections.
-It follows the Home scheme (system light/dark); the loupe and client review
-force dark as before.
+It uses the same dark theme as every other screen.
 
 ### Layout
 | Width | Arrangement |

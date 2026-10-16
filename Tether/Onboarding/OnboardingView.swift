@@ -33,16 +33,15 @@ struct OnboardingView: View {
     private var footer: some View {
         VStack(spacing: TetherSpace.l) {
             PageProgress(count: OnboardingContent.pages.count, current: page)
-            Button(OnboardingContent.isLast(page) ? "Start" : "Next") {
+            Button {
                 if OnboardingContent.isLast(page) { finish() } else {
                     withAnimation(Motion.spring(TetherMotion.settle, reduce: reduceMotion)) { page += 1 }
                 }
+            } label: {
+                Text(OnboardingContent.isLast(page) ? "Start shooting" : "Continue").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(TetherColor.accent)
+            .buttonStyle(.tetherPrimary)
             .controlSize(.large)
-            .font(TetherFont.headline)
-            .frame(maxWidth: .infinity)
             .contentTransition(.numericText())
         }
         .padding(.horizontal, TetherSpace.xl)
@@ -51,7 +50,7 @@ struct OnboardingView: View {
 
     private var permissionButtons: some View {
         VStack(spacing: TetherSpace.s) {
-            PermissionRow(title: "Local network", done: localNetworkAsked) {
+            PermissionRow(title: "Local network", symbol: "network", done: localNetworkAsked) {
                 // Starting discovery triggers the system prompt; stop again right away.
                 Task {
                     try? await app.discovery.start()
@@ -60,17 +59,15 @@ struct OnboardingView: View {
                     localNetworkAsked = true
                 }
             }
-            PermissionRow(title: "Photos (add only)", done: photosStatus == .authorized || photosStatus == .limited) {
+            PermissionRow(title: "Save to Photos", symbol: "photo.on.rectangle", done: photosStatus == .authorized || photosStatus == .limited) {
                 Task { photosStatus = await PHPhotoLibrary.requestAuthorization(for: .addOnly) }
             }
-            PermissionRow(title: "Location for the Wi-Fi name", done: ssidState == .authorized) {
+            PermissionRow(title: "Wi-Fi name", symbol: "wifi", done: ssidState == .authorized) {
                 Task {
                     await app.services.ssid.requestAuthorization()
                     ssidState = await app.services.ssid.authorizationState
                 }
             }
-            Text("Skip any of these; Open Tether asks again when a feature needs it.")
-                .font(TetherFont.hud).foregroundStyle(TetherColor.ink2)
         }
     }
 
@@ -80,38 +77,71 @@ struct OnboardingView: View {
     }
 }
 
-/// Full-bleed gradient placeholder with a large symbol, title in display type.
+/// Graphite page with a coloured glow, a hero up top (the app icon, gently
+/// floating, or a symbol medallion) and the title and line below it.
 private struct OnboardingPageView<Extra: View>: View {
     var page: OnboardingPage
     @ViewBuilder var extra: () -> Extra
+    @State private var float = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(colors: page.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-            Image(systemName: page.symbol)
-                .font(.system(size: 160, weight: .ultraLight))
-                .foregroundStyle(.white.opacity(0.10))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, 80)
-                .padding(.trailing, -30)
-                .accessibilityHidden(true)
-            LinearGradient(colors: [.clear, TetherColor.surface0.opacity(0.9)], startPoint: .center, endPoint: .bottom)
+        ZStack {
+            Color.black.ignoresSafeArea()
+            RadialGradient(colors: [page.glow.opacity(0.38), page.glow.opacity(0.08), .clear],
+                           center: UnitPoint(x: 0.5, y: 0.18), startRadius: 0, endRadius: 420)
                 .ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: TetherSpace.l) {
-                    Text(page.title).font(TetherFont.display).foregroundStyle(TetherColor.ink0)
+                    hero
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, TetherSpace.l)
+                    Text(page.title)
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .foregroundStyle(TetherColor.ink0)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(page.line).font(TetherFont.body).foregroundStyle(TetherColor.ink1)
                         .fixedSize(horizontal: false, vertical: true)
                     extra()
                 }
                 .padding(.horizontal, TetherSpace.xl)
-                .padding(.top, 220)
-                .padding(.bottom, 140)
+                .padding(.top, 72)
+                .padding(.bottom, 160)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
         .accessibilityElement(children: .contain)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) { float = true }
+        }
+    }
+
+    @ViewBuilder private var hero: some View {
+        if let heroImage = page.heroImage {
+            Image(heroImage)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: 200, height: 200)
+                .shadow(color: page.glow.opacity(0.45), radius: 40, y: 12)
+                .offset(y: float ? -6 : 6)
+                .accessibilityHidden(true)
+        } else {
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [page.glow.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 110))
+                    .frame(width: 220, height: 220)
+                Image(systemName: page.symbol)
+                    .font(.system(size: 52, weight: .regular))
+                    .foregroundStyle(.white)
+                    .frame(width: 128, height: 128)
+                    .tetherGlass(in: Circle(), tint: page.glow.opacity(0.35))
+            }
+            .frame(height: 200)
+            .offset(y: float ? -4 : 4)
+            .accessibilityHidden(true)
+        }
     }
 }
 
@@ -138,22 +168,27 @@ private struct PageProgress: View {
 /// Permission with its state spelled out, not only coloured.
 private struct PermissionRow: View {
     var title: String
+    var symbol: String
     var done: Bool
     var action: () -> Void
 
     var body: some View {
         HStack(spacing: TetherSpace.m) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(done ? TetherColor.ok : TetherColor.ink2)
-                .contentTransition(.symbolEffect(.replace))
-            Text(title).font(TetherFont.callout).foregroundStyle(TetherColor.ink0)
+            IconTile(systemImage: symbol, size: 36)
+            Text(title).font(TetherFont.callout.weight(.medium)).foregroundStyle(TetherColor.ink0)
             Spacer()
-            Button(done ? "Granted" : "Allow", action: action)
-                .buttonStyle(.bordered)
-                .tint(done ? TetherColor.ok : TetherColor.accent)
-                .frame(minHeight: TetherHit.min)
-                .disabled(done)
+            if done {
+                Label("Allowed", systemImage: "checkmark.circle.fill")
+                    .font(TetherFont.callout.weight(.semibold))
+                    .foregroundStyle(TetherColor.ok)
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                Button("Allow", action: action)
+                    .buttonStyle(.tetherSecondary)
+                    .controlSize(.small)
+            }
         }
+        .animation(TetherMotion.snap, value: done)
         .padding(.horizontal, TetherSpace.l)
         .padding(.vertical, TetherSpace.s)
         .tetherCard()

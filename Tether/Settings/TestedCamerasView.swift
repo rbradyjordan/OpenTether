@@ -37,8 +37,7 @@ struct TestedCamerasView: View {
             }
         }
         .searchable(text: $query, prompt: "Model")
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("Tested cameras")
         .task {
             if let remote = try? await app.cloud.testedCameras(), !remote.isEmpty { cameras = remote } else { offline = true }

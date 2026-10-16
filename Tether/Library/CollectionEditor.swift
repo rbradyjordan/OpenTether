@@ -33,6 +33,7 @@ struct CollectionEditor: View {
                 }
                 if isSmart { ruleSection }
             }
+            .tetherList()
             .navigationTitle(isNew ? (isSmart ? "New smart collection" : "New collection") : "Edit collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

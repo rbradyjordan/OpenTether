@@ -63,7 +63,7 @@ private struct ComparePane: View {
                     MetadataStrip(item: item, position: nil)
                     Button("Change", action: onChange)
                         .font(TetherFont.hud)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.tetherSecondary)
                         .tint(TetherColor.ink1)
                         .frame(minHeight: TetherHit.min)
                         .padding(.trailing, TetherSpace.s)
@@ -99,7 +99,7 @@ private struct ComparePicker: View {
                 }
                 .padding(TetherSpace.m)
             }
-            .background(TetherColor.surface1)
+            .tetherScreen()
             .navigationTitle(side == .left ? "Left image" : "Right image")
             .navigationBarTitleDisplayMode(.inline)
         }

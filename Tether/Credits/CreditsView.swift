@@ -2,7 +2,7 @@ import StoreKit
 import SwiftUI
 import TetherCore
 
-/// Balance as a display numeral, then pack cards. Light scheme (system).
+/// Balance as a display numeral, then pack cards.
 struct CreditsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -22,7 +22,7 @@ struct CreditsView: View {
             }
             .padding(TetherSpace.l)
         }
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .navigationTitle("Credits")
         .task {
             await app.purchases.loadProducts()
@@ -115,7 +115,7 @@ private struct PackCard: View {
             }
             Spacer(minLength: TetherSpace.s)
             Button(price, action: buy)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.tetherPrimary)
                 .tint(TetherColor.accent)
                 .font(TetherFont.hud)
                 .frame(minHeight: TetherHit.min)

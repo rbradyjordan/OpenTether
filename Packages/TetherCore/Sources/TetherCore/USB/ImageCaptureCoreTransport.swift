@@ -50,14 +50,16 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     public func requestAuthorizations() async -> USBAuthorizationState {
         var state = USBAuthorizationState()
         #if os(iOS)
-        if #available(iOS 18.3, *) {
+        // Availability alone is not enough: some runtimes (the simulator among
+        // them) do not implement the selectors and would throw.
+        if #available(iOS 18.3, *), browser.responds(to: Selector(("requestControlAuthorizationWithCompletion:"))) {
             state.control = await withCheckedContinuation { cont in
                 browser.requestControlAuthorization { status in cont.resume(returning: Self.grant(status)) }
             }
         } else {
             state.control = .notRequired
         }
-        if #available(iOS 14.0, *) {
+        if #available(iOS 14.0, *), browser.responds(to: Selector(("requestContentsAuthorizationWithCompletion:"))) {
             state.contents = await withCheckedContinuation { cont in
                 browser.requestContentsAuthorization { status in cont.resume(returning: Self.grant(status)) }
             }

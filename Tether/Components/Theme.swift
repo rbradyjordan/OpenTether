@@ -3,41 +3,43 @@ import UIKit
 
 // MARK: - Colour tokens (docs/DESIGN.md "Tokens › Colour")
 
-/// Every colour token from the design system. Each resolves per trait
-/// collection, so a screen under `ForceDark` gets the dark column while Home,
-/// Sessions, Settings and Credits follow the system scheme.
+/// Every colour token from the design system. Open Tether is always dark
+/// (graphite, brushed steel, lens-blue accent, after the app icon), so each
+/// token has one value; `TetherApp` pins the colour scheme to dark.
 enum TetherColor {
-    static let ink0 = dynamic(light: 0x0B0B0C, dark: 0xF5F4F0)
-    static let ink1 = dynamic(light: 0x4A4A4F, dark: 0xB8B7B2)
-    static let ink2 = dynamic(light: 0x8A8A90, dark: 0x7A7975)
-    static let surface0 = dynamic(light: 0xFFFFFF, dark: 0x000000)
-    static let surface1 = dynamic(light: 0xF6F5F2, dark: 0x121214)
-    static let surface2 = dynamic(light: 0xECEAE5, dark: 0x1C1C20)
-    static let surface3 = dynamic(light: 0xE0DED8, dark: 0x26262B)
-    static let hairline = dynamic(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.08)
-    static let accent = dynamic(light: 0xFF5A1F, dark: 0xFF6A2C)
-    static let accentSoft = dynamic(light: 0xFF5A1F, dark: 0xFF6A2C, lightAlpha: 0.14, darkAlpha: 0.18)
-    static let ok = dynamic(light: 0x2BB673, dark: 0x3DD68C)
-    static let warn = dynamic(light: 0xE8A317, dark: 0xF2B63D)
-    static let danger = dynamic(light: 0xE23D3D, dark: 0xFF5C5C)
-    static let pick = dynamic(light: 0xFFC53D, dark: 0xFFD166)
+    static let ink0 = Color(hex: 0xF2F4F7)
+    static let ink1 = Color(hex: 0xA9B0BB)
+    static let ink2 = Color(hex: 0x6B7380)
+    static let surface0 = Color(hex: 0x000000)
+    static let surface1 = Color(hex: 0x0A0B0E)
+    static let surface2 = Color(hex: 0x14161B)
+    static let surface3 = Color(hex: 0x1E2128)
+    static let hairline = Color.white.opacity(0.09)
+    /// Lens glint blue: live, capture, selected, primary actions.
+    static let accent = Color(hex: 0x4A9DFF)
+    static let accentSoft = Color(hex: 0x4A9DFF, alpha: 0.16)
+    /// Deeper end of the accent gradient.
+    static let accentDeep = Color(hex: 0x2F6FF0)
+    /// Brushed-steel neutral for edges and inactive glyphs.
+    static let steel = Color(hex: 0x8C939E)
+    static let ok = Color(hex: 0x3DD68C)
+    static let warn = Color(hex: 0xF2B63D)
+    static let danger = Color(hex: 0xFF5C5C)
+    static let pick = Color(hex: 0xFFD166)
 
-    /// Colour labels are the same in both schemes.
-    static let labelRed = Color(uiColor: UIColor(hex: 0xFF5C5C))
-    static let labelYellow = Color(uiColor: UIColor(hex: 0xFFD166))
-    static let labelGreen = Color(uiColor: UIColor(hex: 0x3DD68C))
-    static let labelBlue = Color(uiColor: UIColor(hex: 0x4C8DFF))
-    static let labelPurple = Color(uiColor: UIColor(hex: 0xB07CFF))
+    /// Colour labels.
+    static let labelRed = Color(hex: 0xFF5C5C)
+    static let labelYellow = Color(hex: 0xFFD166)
+    static let labelGreen = Color(hex: 0x3DD68C)
+    static let labelBlue = Color(hex: 0x4C8DFF)
+    static let labelPurple = Color(hex: 0xB07CFF)
 
-    /// Light-scheme card shadow; dark mode uses hairlines instead.
-    static let shadow = Color.black.opacity(0.35)
+}
 
-    private static func dynamic(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(hex: dark, alpha: darkAlpha)
-                : UIColor(hex: light, alpha: lightAlpha)
-        })
+extension Color {
+    init(hex: UInt32, alpha: Double = 1) {
+        self.init(.sRGB, red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255, opacity: alpha)
     }
 }
 
@@ -209,33 +211,33 @@ extension View {
 
 // MARK: - Surface modifiers
 
-/// Card: `surface2`, radius 20, hairline in dark, one soft shadow in light.
+/// Card: flat Liquid Glass (see `TetherGlass`). Pass a `surface` for an
+/// opaque flat fill instead (rare: content that must not show through).
 struct TetherCardModifier: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
-    var surface: Color = TetherColor.surface2
+    var surface: Color?
+    var radius: CGFloat = TetherRadius.card
 
     func body(content: Content) -> some View {
-        content
-            .background(surface, in: RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous)
-                    .strokeBorder(TetherColor.hairline, lineWidth: scheme == .dark ? 0.5 : 0)
-            )
-            .shadow(color: scheme == .dark ? Color.clear : TetherColor.shadow, radius: 24, y: 8)
+        if let surface {
+            content.background(surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+        } else {
+            content.tetherGlassCard(radius: radius)
+        }
     }
 }
 
-/// Chip: `surface2` resting, `accentSoft` fill plus accent hairline when selected.
+/// Chip: flat translucent fill resting; `accentSoft` plus an accent hairline
+/// when selected.
 struct TetherChipModifier: ViewModifier {
     var selected: Bool
 
     func body(content: Content) -> some View {
         content
-            .background(selected ? TetherColor.accentSoft : TetherColor.surface2,
+            .background(selected ? TetherColor.accentSoft : Color.white.opacity(0.07),
                         in: RoundedRectangle(cornerRadius: TetherRadius.chip, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: TetherRadius.chip, style: .continuous)
-                    .strokeBorder(selected ? TetherColor.accent : TetherColor.hairline, lineWidth: selected ? 1 : 0.5)
+                    .strokeBorder(TetherColor.accent.opacity(selected ? 1 : 0), lineWidth: 1)
             )
     }
 }
@@ -263,7 +265,7 @@ struct ForceDark: ViewModifier {
 }
 
 extension View {
-    func tetherCard(surface: Color = TetherColor.surface2) -> some View { modifier(TetherCardModifier(surface: surface)) }
+    func tetherCard(surface: Color? = nil, radius: CGFloat = TetherRadius.card) -> some View { modifier(TetherCardModifier(surface: surface, radius: radius)) }
     func tetherChip(selected: Bool) -> some View { modifier(TetherChipModifier(selected: selected)) }
     func hairlineBorder(radius: CGFloat = TetherRadius.control) -> some View { modifier(HairlineBorderModifier(radius: radius)) }
     func forceDark() -> some View { modifier(ForceDark()) }

@@ -19,6 +19,7 @@ struct ShootBottomBar: View {
         }
         .padding(.top, TetherSpace.s)
         .padding(.bottom, TetherSpace.xs)
+        .padding(.bottom, TetherSpace.s)
         .background(TetherColor.surface1)
         .overlay(alignment: .top) { Rectangle().fill(TetherColor.hairline).frame(height: 0.5) }
         .overlayTypeCap()
@@ -38,14 +39,18 @@ struct ShootBottomBar: View {
     private var captureRow: some View {
         ZStack {
             shutter
-            HStack(spacing: TetherSpace.xs) {
+            HStack(spacing: 0) {
                 tool("Looks", "camera.filters") { model.sheet = .looks }
                 Spacer()
-                tool("Export", "square.and.arrow.up") { model.sheet = .export }
-                    .disabled(model.readyItems.isEmpty)
-                secondaryMenu
+                Spacer().frame(width: CaptureRing.diameter + TetherSpace.xl)
+                Spacer()
+                HStack(spacing: 0) {
+                    tool("Export", "square.and.arrow.up") { model.sheet = .export }
+                        .disabled(model.readyItems.isEmpty)
+                    secondaryMenu
+                }
             }
-            .padding(.horizontal, TetherSpace.s)
+            .padding(.horizontal, TetherSpace.m)
         }
         .frame(minHeight: CaptureRing.diameter + TetherSpace.s)
     }
@@ -54,13 +59,18 @@ struct ShootBottomBar: View {
         if model.canCapture {
             CaptureRing(enabled: model.isLive, busy: model.isCapturing) { af in model.capture(autofocus: af) }
         } else {
-            VStack(spacing: 2) {
-                Image(systemName: "arrow.down.circle").font(.system(size: 22, weight: .medium))
-                Text("Import only").tetherCaption()
+            // No remote shutter on this path: show that frames arrive on their own.
+            VStack(spacing: TetherSpace.xs) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(model.isLive ? TetherColor.accent : TetherColor.ink2)
+                    .symbolEffect(.pulse, isActive: model.isLive)
+                    .frame(width: 56, height: 56)
+                    .tetherGlass(in: Circle(), tint: model.isLive ? TetherColor.accent.opacity(0.2) : nil)
+                Text(model.isLive ? "Auto-import" : "Waiting").font(TetherFont.caption).foregroundStyle(TetherColor.ink1)
             }
-            .foregroundStyle(TetherColor.ink1)
-            .frame(width: CaptureRing.diameter, height: CaptureRing.diameter)
-            .accessibilityLabel("Import only, this camera has no remote capture")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Auto-import. Shoot on the camera; frames arrive here. This connection has no remote shutter.")
         }
     }
 
@@ -84,24 +94,32 @@ struct ShootBottomBar: View {
                 app.commands.preferShootSurface = false
             }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(TetherColor.ink1)
-                .frame(width: TetherHit.min, height: TetherHit.min)
+            VStack(spacing: TetherSpace.xs) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(TetherColor.ink0)
+                    .frame(width: 44, height: 44)
+                    .tetherGlass(in: Circle(), interactive: true)
+                Text("More").font(TetherFont.caption).foregroundStyle(TetherColor.ink1)
+            }
+            .frame(minWidth: 64)
         }
         .accessibilityLabel("More actions")
     }
 
     private func tool(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: icon).font(.system(size: 20, weight: .medium))
-                Text(title).tetherCaption()
+            VStack(spacing: TetherSpace.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(TetherColor.ink0)
+                    .frame(width: 44, height: 44)
+                    .tetherGlass(in: Circle(), interactive: true)
+                Text(title).font(TetherFont.caption).foregroundStyle(TetherColor.ink1).lineLimit(1)
             }
-            .foregroundStyle(TetherColor.ink1)
-            .frame(minWidth: 56, minHeight: TetherHit.min + 8)
+            .frame(minWidth: 64)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleStyle())
         .accessibilityLabel(title)
     }
 }

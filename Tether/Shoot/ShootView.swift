@@ -178,13 +178,7 @@ private struct CanvasOverlay: View {
 
     var body: some View {
         HStack(alignment: .bottom) {
-            Picker("Which capture to show", selection: Binding(get: { model.shootSession.showNewestCapture }, set: { model.setShowNewestCapture($0) })) {
-                Text("Show newest").tag(true)
-                Text("Keep selection").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 240)
-            .accessibilityLabel("Which capture to show")
+            FollowNewestToggle(isOn: model.shootSession.showNewestCapture) { model.setShowNewestCapture($0) }
             Spacer()
             if model.canLiveView {
                 Button { model.toggleLiveView() } label: {
@@ -192,8 +186,7 @@ private struct CanvasOverlay: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(model.liveViewActive ? TetherColor.accent : TetherColor.ink0)
                         .frame(width: TetherHit.min, height: TetherHit.min)
-                        .background(TetherColor.surface2.opacity(0.85), in: Circle())
-                        .overlay(Circle().strokeBorder(TetherColor.hairline, lineWidth: 0.5))
+                        .tetherGlass(in: Circle(), interactive: true)
                 }
                 .accessibilityLabel(model.liveViewActive ? "Stop live view" : "Start live view")
             }
@@ -221,5 +214,36 @@ private struct ShootDiagnosticsSheet: View {
         }
         .forceDark()
         .presentationDetents([.large])
+    }
+}
+
+/// One glass capsule over the canvas: "Following newest" jumps to each new
+/// frame as it lands; tap to hold the frame you are looking at instead.
+private struct FollowNewestToggle: View {
+    var isOn: Bool
+    var set: (Bool) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button { set(!isOn) } label: {
+            Label {
+                Text(isOn ? "Following newest" : "Holding this frame").foregroundStyle(.white)
+            } icon: {
+                Image(systemName: isOn ? "arrow.right.to.line" : "pin.fill")
+                    .foregroundStyle(isOn ? TetherColor.accent : .white)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+                .font(TetherFont.hud.weight(.semibold))
+                .padding(.horizontal, TetherSpace.m)
+                .frame(minHeight: 36)
+                .tetherGlass(in: Capsule(), tint: Color.black.opacity(0.35), interactive: true)
+                .frame(minHeight: TetherHit.min)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(Motion.spring(TetherMotion.snap, reduce: reduceMotion), value: isOn)
+        .accessibilityLabel("Show newest frame")
+        .accessibilityValue(isOn ? "on" : "off")
+        .accessibilityHint("When on, each new frame is shown as it arrives")
     }
 }

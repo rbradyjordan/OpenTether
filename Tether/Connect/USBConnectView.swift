@@ -15,7 +15,7 @@ struct USBConnectView: View {
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle("USB-C")
         .onAppear {
             if model == nil { model = USBConnectViewModel(browser: app.services.usbBrowser) }
@@ -34,7 +34,7 @@ struct USBConnectView: View {
                 Text(model.authorization.summary).font(.subheadline)
                 Spacer()
                 if !model.authorization.canSendPTP {
-                    Button("Allow") { model.requestAuthorizations() }.buttonStyle(.bordered).controlSize(.small)
+                    Button("Allow") { model.requestAuthorizations() }.buttonStyle(.tetherSecondary).controlSize(.small)
                 }
             }
         }
@@ -65,7 +65,7 @@ struct USBConnectView: View {
                         Button("Connect") {
                             model.connect(device, shoot: SessionPickerField.resolve(session, app: app), app: app)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.tetherPrimary)
                         .disabled(model.isConnecting || !model.authorization.canSendPTP)
                         .accessibilityLabel("Connect to \(device.name)")
                     }

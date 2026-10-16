@@ -36,7 +36,7 @@ struct ReconnectView: View {
             button(strategy)
         }
         .padding(TetherSpace.xl)
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .forceDark()
         .presentationDetents([.fraction(0.42)])
         .presentationDragIndicator(.visible)
@@ -74,7 +74,7 @@ struct ReconnectView: View {
                 .font(TetherFont.headline)
                 .frame(maxWidth: .infinity, minHeight: TetherHit.min + 8)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.tetherPrimary)
         .tint(TetherColor.accent)
         .contentTransition(.numericText())
     }

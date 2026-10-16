@@ -47,6 +47,7 @@ struct NewSessionSheet: View {
                     }
                 }
             }
+            .tetherList()
             .navigationTitle("New session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -16,7 +16,7 @@ struct LibraryContent: View {
             FilterBar(model: model)
             LibraryGrid(model: model)
         }
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .safeAreaInset(edge: .bottom) { BatchBar(model: model) }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)

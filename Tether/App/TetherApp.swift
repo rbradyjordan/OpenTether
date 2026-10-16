@@ -7,12 +7,12 @@ struct TetherApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init() { Self.styleNavigationBars() }
+
     var body: some Scene {
         WindowGroup {
             ZStack {
                 if let model {
-                    // Home, Sessions, Settings and Credits follow the system scheme;
-                    // image-first screens force dark themselves (`forceDark()`).
                     RootView()
                         .environment(model)
                         .tint(TetherColor.accent)
@@ -34,7 +34,22 @@ struct TetherApp: App {
                         .zIndex(1)
                 }
             }
+            // Open Tether is always dark (graphite and steel, like the icon).
+            .preferredColorScheme(.dark)
         }
+    }
+
+    /// Rounded semibold titles, matching the display type role.
+    private static func styleNavigationBars() {
+        let appearance = UINavigationBar.appearance()
+        func rounded(_ style: UIFont.TextStyle, _ weight: UIFont.Weight) -> UIFont {
+            let base = UIFont.preferredFont(forTextStyle: style)
+            let font = UIFont.systemFont(ofSize: base.pointSize, weight: weight)
+            guard let descriptor = font.fontDescriptor.withDesign(.rounded) else { return font }
+            return UIFont(descriptor: descriptor, size: base.pointSize)
+        }
+        appearance.largeTitleTextAttributes = [.font: rounded(.largeTitle, .bold), .foregroundColor: UIColor(TetherColor.ink0)]
+        appearance.titleTextAttributes = [.font: rounded(.headline, .semibold), .foregroundColor: UIColor(TetherColor.ink0)]
     }
 
     /// The splash stays up for its intro and until launch work finishes, but

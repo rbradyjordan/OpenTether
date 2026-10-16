@@ -31,6 +31,7 @@ struct MetadataSettingsView: View {
             }
             XMPPreviewSection(profile: profile)
         }
+        .tetherList()
         .navigationTitle("Metadata")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if !loaded { profile = app.memory.get(WorkspaceMemory.metadataProfile); loaded = true } }

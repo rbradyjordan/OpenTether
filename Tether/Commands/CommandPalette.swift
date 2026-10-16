@@ -27,8 +27,7 @@ struct CommandPalette: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(TetherColor.surface1)
+            .tetherList()
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Type a command")
             .onSubmit(of: .search) { runHighlightedOrFirst() }
             .navigationTitle("Commands")

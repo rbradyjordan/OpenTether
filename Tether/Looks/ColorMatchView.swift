@@ -37,12 +37,12 @@ struct ColorMatchView: View {
                     } label: {
                         Label(working ? "Matching…" : "Match and apply", systemImage: "wand.and.stars").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .buttonStyle(.tetherPrimary).controlSize(.large)
                     .disabled(working || referenceID == nil || targetID == nil || referenceID == targetID)
                 }
                 .padding(16)
             }
-            .background(Theme.background)
+            .tetherScreen()
             .navigationTitle("Colour match")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }

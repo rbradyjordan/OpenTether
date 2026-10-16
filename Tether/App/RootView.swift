@@ -17,7 +17,7 @@ struct RootView: View {
                 CompactRootView()
             }
         }
-        .background(TetherColor.surface1)
+        .background(ScreenBackground())
         .toast($app.toast)
         .commandRequests()
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 import TetherCore
 
-/// Sessions as large cards, resume banner on top. Light scheme (system).
+/// Sessions as large cards, resume banner on top.
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -29,7 +29,7 @@ struct HomeView: View {
             .padding(TetherSpace.l)
             .animation(Motion.spring(TetherMotion.arrive, reduce: reduceMotion), value: app.sessions.count)
         }
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .navigationTitle("Sessions")
         .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
         .toolbar {
@@ -103,7 +103,7 @@ struct ContinueCard: View {
                     Label("Export like last time · \(lastExport.destination.displayName)", systemImage: "arrow.uturn.up")
                         .frame(minHeight: TetherHit.min)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.tetherSecondary)
                 .accessibilityHint("Exports this view's \(lastExport.scope) with the remembered settings")
             }
         }

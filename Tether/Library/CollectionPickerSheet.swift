@@ -27,6 +27,7 @@ struct CollectionPickerSheet: View {
                 }
                 Section { Button { showNew = true } label: { Label("New collection with these \(ids.count == 1 ? "photo" : "\(ids.count) photos")", systemImage: "plus") } }
             }
+            .tetherList()
             .navigationTitle("Add to collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }

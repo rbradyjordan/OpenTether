@@ -30,7 +30,7 @@ struct ConnectingProgressView: View {
                     .transition(.opacity)
             }
             Button(progress.failure == nil ? "Cancel" : "Try again", action: onCancel)
-                .buttonStyle(.bordered)
+                .buttonStyle(.tetherSecondary)
                 .tint(progress.failure == nil ? TetherColor.ink1 : TetherColor.accent)
                 .frame(maxWidth: .infinity, minHeight: TetherHit.min)
         }

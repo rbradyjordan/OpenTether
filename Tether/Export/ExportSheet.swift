@@ -50,6 +50,7 @@ struct ExportSheet: View {
             }
             .tint(TetherColor.accent)
             .safeAreaInset(edge: .bottom) { quoteBar }
+            .tetherList()
             .navigationTitle(collectionName.map { fromLibrary ? "Export · \($0)" : "Export" } ?? "Export")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
@@ -106,7 +107,7 @@ struct ExportSheet: View {
                 Text(previewItems.isEmpty ? "Nothing to export" : "Export \(previewItems.count)")
                     .font(TetherFont.headline).frame(maxWidth: .infinity, minHeight: TetherHit.min + 6).contentTransition(.numericText())
             }
-            .buttonStyle(.borderedProminent).tint(TetherColor.accent).disabled(previewItems.isEmpty)
+            .buttonStyle(.tetherPrimary).tint(TetherColor.accent).disabled(previewItems.isEmpty)
         }
         .padding(TetherSpace.l)
         .background(.bar)

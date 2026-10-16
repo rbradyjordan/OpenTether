@@ -1,57 +1,83 @@
 import SwiftUI
 
-/// First screen after the launch screen: the mark draws itself (ring, cable,
-/// disc), the wordmark rises in, and `TetherApp` fades the whole thing out
-/// once launch work is done. Starts on the same black as the launch screen so
-/// the hand-off is invisible. Under Reduce Motion everything simply fades in.
+/// First screen after the launch screen: the app icon rises out of the dark
+/// with a lens-blue bloom behind it, a highlight sweeps across the glass, and
+/// the wordmark settles in. `TetherApp` fades it out once launch work is done.
+/// Starts on the same black as the launch screen so the hand-off is invisible.
+/// Under Reduce Motion everything simply fades in.
 struct SplashView: View {
-    @State private var ring: CGFloat = 0
-    @State private var cable: CGFloat = 0
-    @State private var disc: CGFloat = 0
+    @State private var iconIn = false
+    @State private var bloom = false
+    @State private var sweep: CGFloat = -1
     @State private var wordmark = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Roughly how long the intro takes to finish drawing.
+    /// Roughly how long the intro takes to finish.
     static let introDuration: Duration = .milliseconds(1400)
+    private static let iconSize: CGFloat = 148
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            RadialGradient(colors: [TetherColor.accent.opacity(0.32), TetherColor.accentDeep.opacity(0.08), .clear],
+                           center: .center, startRadius: 0, endRadius: 260)
+                .frame(width: 520, height: 520)
+                .offset(y: -40)
+                .opacity(bloom ? 1 : 0)
+                .scaleEffect(bloom ? 1 : 0.6)
             VStack(spacing: TetherSpace.xl) {
-                OpenTetherMark(ring: ring, cable: cable, disc: disc,
-                               ringColor: TetherColor.accent, cableColor: TetherColor.accent, discColor: .white)
-                    .frame(width: 132, height: 132)
-                VStack(spacing: TetherSpace.xs) {
+                icon
+                VStack(spacing: TetherSpace.s) {
                     Text("Open Tether")
-                        .font(.system(size: 34, weight: .semibold, design: .rounded))
-                        .foregroundStyle(TetherColor.ink0)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(LinearGradient(colors: [.white, TetherColor.steel], startPoint: .top, endPoint: .bottom))
                     Text("Tethered capture, wherever you shoot")
                         .tetherCaption()
                         .foregroundStyle(TetherColor.ink2)
                 }
                 .opacity(wordmark ? 1 : 0)
-                .offset(y: wordmark || reduceMotion ? 0 : 10)
+                .offset(y: wordmark || reduceMotion ? 0 : 12)
             }
         }
-        .forceDark()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Open Tether")
         .accessibilityAddTraits(.isHeader)
         .task { await play() }
     }
 
+    private var icon: some View {
+        Image("BrandIcon")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .frame(width: Self.iconSize, height: Self.iconSize)
+            // A soft highlight passes across the icon once, like light over the lens.
+            .overlay {
+                GeometryReader { geo in
+                    LinearGradient(colors: [.clear, .white.opacity(0.35), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: geo.size.width * 0.45)
+                        .rotationEffect(.degrees(20))
+                        .offset(x: sweep * geo.size.width * 1.2)
+                        .blendMode(.plusLighter)
+                }
+                .mask(Image("BrandIcon").resizable().scaledToFit())
+                .allowsHitTesting(false)
+            }
+            .opacity(iconIn ? 1 : 0)
+            .scaleEffect(iconIn || reduceMotion ? 1 : 0.82)
+            .offset(y: iconIn || reduceMotion ? 0 : 14)
+    }
+
     private func play() async {
         if reduceMotion {
-            ring = 1; cable = 1; disc = 1
-            withAnimation(.easeOut(duration: 0.3)) { wordmark = true }
+            withAnimation(.easeOut(duration: 0.3)) { iconIn = true; bloom = true; wordmark = true }
             return
         }
-        withAnimation(.easeInOut(duration: 0.6)) { ring = 1 }
-        try? await Task.sleep(for: .milliseconds(380))
-        withAnimation(.easeOut(duration: 0.45)) { cable = 1 }
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.78)) { iconIn = true }
+        withAnimation(.easeOut(duration: 0.9)) { bloom = true }
+        try? await Task.sleep(for: .milliseconds(420))
+        withAnimation(.easeInOut(duration: 0.7)) { sweep = 1.2 }
         try? await Task.sleep(for: .milliseconds(200))
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.62)) { disc = 1 }
-        try? await Task.sleep(for: .milliseconds(180))
         withAnimation(TetherMotion.arrive) { wordmark = true }
     }
 }

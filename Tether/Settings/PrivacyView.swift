@@ -20,7 +20,7 @@ struct PrivacyView: View {
             .font(.footnote)
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle("Privacy & legal")
     }
 }

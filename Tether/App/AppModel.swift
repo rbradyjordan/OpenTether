@@ -87,7 +87,9 @@ final class AppModel {
 
     func reloadSessions() {
         sessions = (try? store.sessions()) ?? []
-        interrupted = (try? store.interruptedSessions()) ?? []
+        // The session on the shoot screen right now is live, not waiting to be resumed.
+        let liveID = shoot?.shootSession.id
+        interrupted = ((try? store.interruptedSessions()) ?? []).filter { $0.id != liveID }
         var c: [String: SessionStore.SessionCounts] = [:]
         for s in sessions { c[s.id] = (try? store.counts(in: s.id)) ?? SessionStore.SessionCounts() }
         counts = c
@@ -253,7 +255,11 @@ final class AppModel {
                                    store: store, cache: cache, previews: services.previews)
         let context = ReconnectContext.from(session: s)
         let connection = LiveConnection(session: tether, shoot: s, identity: s.camera, context: context, needsReconnect: context != .ftp)
-        if context == .ftp { Task { try? await tether.start() } }
+        if context == .ftp {
+            // The camera pushes to our server, so it has to be listening again.
+            if !ftpReceiver.isRunning { ftpReceiver.start() }
+            Task { try? await tether.start() }
+        }
         activate(connection)
     }
 

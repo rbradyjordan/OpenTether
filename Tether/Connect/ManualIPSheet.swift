@@ -28,6 +28,7 @@ struct ManualIPSheet: View {
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
                 }
             }
+            .tetherList()
             .navigationTitle("Enter IP address")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
