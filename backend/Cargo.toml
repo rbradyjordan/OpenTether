@@ -1,0 +1,45 @@
+[package]
+name = "tether-cloud"
+version = "0.1.0"
+edition = "2021"
+description = "Cloud backend for Tether (iOS camera tethering): looks catalog, AI colour-match LUTs, credits ledger, batch export, tested-camera matrix."
+license = "MIT"
+publish = false
+
+[lib]
+name = "tether_cloud"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tether-cloud"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["json", "macros", "multipart"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rand = "0.8"
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+zip = { version = "9", default-features = false }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
