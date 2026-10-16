@@ -168,6 +168,7 @@ public actor ExportQueue {
                 try await cloud.upload(fileURL: rendered, to: put, contentType: item.kind == .raw ? "application/octet-stream" : "image/jpeg")
             }
             job.items[idx].state = .done(put)
+            try? store.recordExport(captureID: item.id, destination: .cloud, jobID: job.id, remoteID: put)
         case .ftp(let destinationID):
             guard let dest = try store.ftpDestinations().first(where: { $0.id == destinationID }),
                   let client = ftpClientFactory?(dest) else { throw ExportError.ftpDestinationMissing }
@@ -175,9 +176,12 @@ public actor ExportQueue {
             let remote = (dest.remoteDirectory as NSString).appendingPathComponent(item.filename)
             try await client.upload(data, remote)
             job.items[idx].state = .done(remote)
+            try? store.recordExport(captureID: item.id, destination: .ftp, jobID: job.id, remoteID: remote)
         default:
             let id = try await sink.deliver(fileURL: rendered, item: item, destination: job.destination)
             job.items[idx].state = .done(id)
+            let key: CaptureFilter.ExportDestinationKey = { if case .photos = job.destination { return .photos }; return .files }()
+            try? store.recordExport(captureID: item.id, destination: key, jobID: job.id, remoteID: id)
         }
         if rendered != original { try? FileManager.default.removeItem(at: rendered) }
         save(job)

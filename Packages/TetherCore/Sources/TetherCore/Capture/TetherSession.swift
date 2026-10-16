@@ -329,7 +329,7 @@ public actor TetherSession {
         var item = CaptureItem(sessionID: session.id, sequence: seq, handle: obj.handle,
                                filename: obj.info?.filename ?? "capture-\(seq)", kind: obj.info?.mediaKind ?? .other,
                                bytes: Int(obj.info?.objectCompressedSize ?? 0), source: identity?.transport ?? .usb,
-                               lookID: session.lookID, exposure: ExposureSummary(from: properties))
+                               lookID: session.lookID, exposure: ExposureSummary(from: properties), cameraID: identity?.id)
         if let info = obj.info { apply(info, to: &item) }
         item.state = .downloading(received: 0, total: item.bytes > 0 ? item.bytes : nil)
         upsert(item)
@@ -406,7 +406,7 @@ public actor TetherSession {
         let name = url.lastPathComponent
         let kind = PTPObjectInfo(objectFormat: .undefined, filename: name).mediaKind
         var item = CaptureItem(sessionID: session.id, sequence: seq, handle: UInt32(truncatingIfNeeded: seq), filename: name,
-                               kind: kind, bytes: 0, source: .ftpPush, lookID: session.lookID)
+                               kind: kind, bytes: 0, source: .ftpPush, lookID: session.lookID, cameraID: identity?.id)
         do {
             let data = try Data(contentsOf: url)
             item.bytes = data.count
@@ -478,6 +478,14 @@ public actor TetherSession {
     public func rename(_ name: String) {
         session.name = name
         persistSession()
+    }
+
+    /// The library edited one of our captures (rating, flag, label): take the
+    /// stored version so the filmstrip agrees without a second write.
+    public func replaceFromStore(_ item: CaptureItem) {
+        guard item.sessionID == session.id, let i = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[i] = item
+        continuation.yield(.capture(item))
     }
 
     // MARK: Internals

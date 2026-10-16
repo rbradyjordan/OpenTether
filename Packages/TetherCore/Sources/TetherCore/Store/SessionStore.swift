@@ -49,6 +49,7 @@ public final class SessionStore: @unchecked Sendable {
             id TEXT PRIMARY KEY, last_seen REAL NOT NULL, host TEXT, json TEXT NOT NULL
         )
         """)
+        try migrateLibrary()
     }
 
     // MARK: Sessions
@@ -99,12 +100,14 @@ public final class SessionStore: @unchecked Sendable {
         case .failed: stateKey = "failed"
         }
         try db.execute("""
-        INSERT INTO captures (id, session_id, sequence, filename, kind, pair_key, rating, flag, color, state, received_at, json)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO captures (id, session_id, sequence, filename, kind, pair_key, rating, flag, color, state, received_at, json, camera_id, look_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET filename=excluded.filename, kind=excluded.kind, pair_key=excluded.pair_key,
-            rating=excluded.rating, flag=excluded.flag, color=excluded.color, state=excluded.state, json=excluded.json
+            rating=excluded.rating, flag=excluded.flag, color=excluded.color, state=excluded.state, received_at=excluded.received_at,
+            json=excluded.json, camera_id=excluded.camera_id, look_id=excluded.look_id
         """, [.text(c.id), .text(c.sessionID), .init(c.sequence), .text(c.filename), .text(c.kind.rawValue), .text(c.pairKey),
-              .init(c.rating), .text(c.flag.rawValue), .text(c.colorLabel.rawValue), .text(stateKey), .init(c.receivedAt), .json(c)])
+              .init(c.rating), .text(c.flag.rawValue), .text(c.colorLabel.rawValue), .text(stateKey), .init(c.receivedAt), .json(c),
+              .init(c.cameraID), .init(c.lookID)])
     }
 
     public func captures(in sessionID: String) throws -> [CaptureItem] {

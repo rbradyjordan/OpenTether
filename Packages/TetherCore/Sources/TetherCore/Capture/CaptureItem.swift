@@ -49,13 +49,15 @@ public struct CaptureItem: Identifiable, Codable, Hashable, Sendable {
     public var source: TransportKind
     public var lookID: String?
     public var exposure: ExposureSummary?
+    /// The camera that made it (CameraIdentity.id); lets the library filter by body.
+    public var cameraID: String?
 
     public init(id: String = UUID().uuidString, sessionID: String, sequence: Int, handle: UInt32, filename: String,
                 kind: MediaKind, bytes: Int, width: Int = 0, height: Int = 0, capturedAt: Date = Date(),
                 receivedAt: Date = Date(), relativePath: String? = nil, proxyRelativePath: String? = nil,
                 thumbnailRelativePath: String? = nil, rating: Int = 0, flag: CaptureFlag = .none,
                 colorLabel: ColorLabel = .none, state: State = .announced, pairKey: String? = nil,
-                source: TransportKind, lookID: String? = nil, exposure: ExposureSummary? = nil) {
+                source: TransportKind, lookID: String? = nil, exposure: ExposureSummary? = nil, cameraID: String? = nil) {
         self.id = id
         self.sessionID = sessionID
         self.sequence = sequence
@@ -78,6 +80,7 @@ public struct CaptureItem: Identifiable, Codable, Hashable, Sendable {
         self.source = source
         self.lookID = lookID
         self.exposure = exposure
+        self.cameraID = cameraID
     }
 
     /// `IMG_0001.CR3` and `IMG_0001.JPG` share `IMG_0001`.
