@@ -31,7 +31,10 @@ final class ShootViewModel {
     let renderCache: LookRenderCache
     private unowned let app: AppModel
     private var eventsTask: Task<Void, Never>?
-    private var usbWaitTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
+    /// Set while the link is known to be down so a stale snapshot cannot flip
+    /// the status back to idle/ready.
+    private var pendingReconnect = false
     /// Frames that arrived while "Keep current selection" was on.
     private(set) var unseenCount = 0
 
@@ -45,6 +48,7 @@ final class ShootViewModel {
         self.renderCache = LookRenderCache(renderer: app.services.renderer, resolver: app.services.lookResolver, cache: app.cache)
         bind()
         if connection.needsReconnect {
+            pendingReconnect = true
             status = .disconnected("Resumed after the app was closed")
             sheet = .reconnect
         }
@@ -102,7 +106,7 @@ final class ShootViewModel {
     private func apply(snapshot: TetherSession.Snapshot) {
         shootSession = snapshot.session
         identity = snapshot.identity ?? identity
-        status = snapshot.status
+        if !pendingReconnect { status = snapshot.status }
         items = snapshot.items
         properties = snapshot.properties
         selectedItemID = snapshot.selectedItemID
@@ -121,22 +125,24 @@ final class ShootViewModel {
                 sheet = .reconnect
             }
         case .capture(let item):
-            let isNew = !items.contains { $0.id == item.id }
+            let previous = items.first { $0.id == item.id }
+            let becameReady = item.state.isReady && !(previous?.state.isReady ?? false)
             if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
-            if isNew || item.state.isReady {
+            if previous == nil || becameReady {
                 Task { await refreshCounters() }
             }
-            if item.state.isReady, !shootSession.showNewestCapture, isNew || selectedItemID != item.id {
-                unseenCount += 1
-                toast = ToastMessage(text: "New frame \(item.filename)", systemImage: "photo.badge.plus", action: "Show")
+            if becameReady {
+                HapticFeedback.light()
+                if !shootSession.showNewestCapture {
+                    unseenCount += 1
+                    toast = ToastMessage(text: "New frame \(item.filename)", systemImage: "photo.badge.plus", action: "Show")
+                }
             }
-            if item.state.isReady, isNew { HapticFeedback.light() }
         case .properties(let p):
             properties = p
         case .liveView(let frame):
-            if let payload = frame.jpeg.jpegPayload() ?? Optional(frame.jpeg), let img = UIImage(data: payload) {
-                liveViewImage = img
-            }
+            let payload = frame.jpeg.jpegPayload() ?? frame.jpeg
+            if let img = UIImage(data: payload) { liveViewImage = img }
         case .warning(let w):
             toast = ToastMessage(text: w, systemImage: "exclamationmark.triangle")
         case .selection(let id):
@@ -238,7 +244,7 @@ final class ShootViewModel {
 
     func end() async {
         eventsTask?.cancel()
-        usbWaitTask?.cancel()
+        reconnectTask?.cancel()
         await session.stop(ended: true)
     }
 
@@ -260,12 +266,26 @@ final class ShootViewModel {
         guard !isReconnecting else { return }
         isReconnecting = true
         reconnectError = nil
-        status = .reconnecting
         let strategy = reconnectStrategy
+        switch strategy {
+        case .nothingToDo, .startFresh:
+            isReconnecting = false
+            sheet = nil
+            return
+        default:
+            break
+        }
+        status = .reconnecting
+        pendingReconnect = true
         let services = app.services
         let shoot = shootSession
-        Task {
+        let old = session
+        reconnectTask = Task {
             defer { isReconnecting = false }
+            // The old TetherSession cannot swap transports: close it first so the
+            // new one (built over the same stored ShootSession) owns the camera.
+            eventsTask?.cancel()
+            await old.stop(ended: false)
             do {
                 let connection: LiveConnection
                 switch strategy {
@@ -276,11 +296,7 @@ final class ShootViewModel {
                     connection = try await ConnectionBuilder.connectPTPIP(host: host, port: port, vendorHint: vendor, shoot: shoot, services: services) { _ in }
                 case .retryRicoh(let host):
                     connection = try await ConnectionBuilder.connectRicoh(host: host, shoot: shoot, services: services) { _ in }
-                case .nothingToDo:
-                    sheet = nil
-                    return
-                case .startFresh:
-                    sheet = nil
+                case .nothingToDo, .startFresh:
                     return
                 }
                 adopt(connection)
@@ -297,15 +313,12 @@ final class ShootViewModel {
     }
 
     func cancelReconnect() {
-        usbWaitTask?.cancel()
+        reconnectTask?.cancel()
         isReconnecting = false
     }
 
-    /// The old `TetherSession` cannot swap transports, so a reconnect builds a
-    /// fresh one over the same stored `ShootSession` (the store holds every capture).
     private func adopt(_ connection: LiveConnection) {
-        let old = session
-        Task { await old.stop(ended: false) }
+        pendingReconnect = false
         session = connection.session
         shootSession = connection.shoot
         identity = connection.identity

@@ -28,12 +28,12 @@ final class KeychainStore: @unchecked Sendable {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
-        SecItemDelete(base as CFDictionary)
+        _ = SecItemDelete(base as CFDictionary)
         guard let value, let data = value.data(using: .utf8) else { return }
         var add = base
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        _ = SecItemAdd(add as CFDictionary, nil)
     }
 }
 

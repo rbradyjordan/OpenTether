@@ -60,8 +60,8 @@ public actor TetherSession {
 
     public private(set) var session: ShootSession
     public let identity: CameraIdentity?
-    private let handler: VendorHandler?
-    private let engine: PTPEngine?
+    private var handler: VendorHandler?
+    private var engine: PTPEngine?
     private let store: SessionStore
     private let cache: CaptureCacheProxy
     private let previews: PreviewGenerating
@@ -144,6 +144,18 @@ public actor TetherSession {
         if ended { session.endedAt = Date() }
         persistSession()
         setStatus(ended ? .ended : .disconnected("Stopped"))
+    }
+
+    /// Reconnect over a fresh transport while keeping the session, its items
+    /// and selection: swap the camera link and run `start()` again.
+    public func reattach(handler: VendorHandler?, engine: PTPEngine?) async throws {
+        eventTask?.cancel(); pollTask?.cancel(); liveViewTask?.cancel()
+        eventTask = nil; pollTask = nil; liveViewTask = nil
+        await self.engine?.disconnect()
+        self.handler = handler
+        self.engine = engine
+        setStatus(.reconnecting)
+        try await start()
     }
 
     /// The transport dropped (cable pulled, Wi-Fi lost). The UI offers reconnect.

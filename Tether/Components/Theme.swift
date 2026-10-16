@@ -21,7 +21,7 @@ extension View {
     }
 }
 
-extension ColorLabelStyle {
+enum ColorLabelStyle {
     static func color(for label: TetherCoreColorLabel) -> Color {
         switch label {
         case .none: return .clear
@@ -33,5 +33,3 @@ extension ColorLabelStyle {
         }
     }
 }
-
-enum ColorLabelStyle {}

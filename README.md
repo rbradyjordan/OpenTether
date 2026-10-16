@@ -34,14 +34,14 @@ tether-ios/
 
 | Piece | State | Verified by |
 |-------|-------|-------------|
-| PTP engine, datasets, PTP/IP transport | Complete | `swift test` incl. a loopback PTP/IP camera (handshake, multi-packet data, data-out, events, InitFail) |
+| PTP engine, datasets, PTP/IP transport | Complete | `swift test` (154 across the package) incl. a loopback PTP/IP camera (handshake, multi-packet data, data-out, events, InitFail) |
 | USB (ImageCaptureCore) | Written, compile-guarded for Apple | container framing unit-tested; **not run on a device** |
 | Vendor handlers | Written for all eight brands with capability flags from DeviceInfo | scripted-transport tests per vendor; **no real camera yet** |
 | Discovery + SSID monitor | Complete | unit tests with canned SSDP/Bonjour/Fuji payloads, loopback Fuji dial-back |
-| FTP server + clients | Complete (plain FTP on Linux; FTPS via NSStream TLS on Apple; libcurl client when linkable) | loopback integration tests |
+| FTP server + clients | Complete (pure-Swift FTP; FTPS via NSStream TLS on Apple; libcurl client linked on Linux through `Sources/CCurl`) | loopback integration tests, incl. libcurl uploading into our own server |
 | Capture pipeline, store, review, export queue, looks | Complete | unit tests (recovery, pairs, show-newest/keep-selection, resumable export, credits quote) |
 | Cloud backend | Complete | `cargo test` (36), fmt + clippy clean |
-| SwiftUI app | Written; every screen | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run** |
+| SwiftUI app | Written; every screen (80 files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
 
 Nothing has touched a real camera. Every vendor opcode or property code that
 was not certain is marked `// VERIFY` in the vendor's single code table, so

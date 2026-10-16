@@ -9,7 +9,7 @@ struct DiagnosticsView: View {
 
     @State private var report: DiagnosticReport?
     @State private var running = false
-    @State private var shareText: String?
+    @State private var shareText: ShareText?
     @State private var host = RicohProbe.defaultHost
     @State private var port = "\(PTPIPPacket.standardPort)"
 
@@ -35,7 +35,7 @@ struct DiagnosticsView: View {
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(running)
                 if let report, report.finishedAt != nil {
-                    Button { shareText = report.shareText } label: {
+                    Button { shareText = ShareText(text: report.shareText) } label: {
                         Label("Share report", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered).controlSize(.large)
@@ -45,7 +45,7 @@ struct DiagnosticsView: View {
         }
         .background(Theme.background)
         .navigationTitle(wired ? "Cable diagnostic" : "Wireless diagnostic")
-        .sheet(item: $shareText) { text in ShareSheet(items: [text]) }
+        .sheet(item: $shareText) { item in ShareSheet(items: [item.text]) }
         .onAppear {
             if !wired, let first = app.discovery.current.first {
                 host = first.host
@@ -114,7 +114,9 @@ struct DiagnosticsView: View {
         let browser = app.services.usbBrowser
         let log = app.services.ptpLog
         let shoot = app.shoot
-        let liveBattery: Int? = shoot?.properties.first { $0.property == .batteryLevel }?.raw.intValue.map(Int.init)
+        let shootIsLive = shoot?.isLive == true
+        let liveIdentity = shootIsLive ? shoot?.identity : nil
+        let liveBattery: Int? = shoot?.properties.first { $0.property == .batteryLevel }?.raw.intValue.map { Int($0) }
         let holder = TransportHolder()
         let probes = WiredDiagnostics.Probes(
             deviceOnBus: {
@@ -126,7 +128,7 @@ struct DiagnosticsView: View {
             },
             authorization: { await browser.requestAuthorizations() },
             openSession: {
-                if shoot?.isLive == true { return .success(()) }
+                if shootIsLive { return .success(()) }
                 guard let candidate = await Self.firstCandidate(browser), let device = browser.device(id: candidate.id) else {
                     return .failure(ConnectError.deviceGone)
                 }
@@ -138,7 +140,7 @@ struct DiagnosticsView: View {
                 } catch { return .failure(error) }
             },
             deviceInfo: {
-                if let identity = shoot?.identity, shoot?.isLive == true {
+                if let identity = liveIdentity {
                     return .success(PTPDeviceInfo(manufacturer: identity.manufacturer, model: identity.model,
                                                   deviceVersion: identity.firmware, serialNumber: identity.serialNumber))
                 }
@@ -193,6 +195,7 @@ final class TransportHolder: @unchecked Sendable {
     var transport: ImageCaptureCoreTransport?
 }
 
-extension String: Identifiable {
-    public var id: String { self }
+struct ShareText: Identifiable {
+    var id = UUID()
+    var text: String
 }

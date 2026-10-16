@@ -66,7 +66,7 @@ struct FilmstripCell: View {
         .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(selected ? Theme.accent : .clear, lineWidth: 2))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
-        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .accessibilityAddTraits(selected ? AccessibilityTraits([.isSelected, .isButton]) : AccessibilityTraits.isButton)
     }
 
     private var accessibilityText: String {

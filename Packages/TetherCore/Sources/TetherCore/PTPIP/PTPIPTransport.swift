@@ -24,6 +24,8 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         /// Fujifilm cameras dial back to us; the app is then the TCP server and
         /// `host` is ignored by the Fuji connector.
         public var vendorHint: CameraVendor?
+        /// Handshake progress for the connecting screen.
+        public var onProgress: (@Sendable (HandshakeStage) -> Void)?
 
         public init(host: String, port: UInt16 = PTPIPPacket.standardPort, clientName: String = "Tether",
                     guid: [UInt8], connectTimeout: TimeInterval = 8, handshakeTimeout: TimeInterval = 15,
@@ -37,6 +39,10 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
             self.requireEventChannel = requireEventChannel
             self.vendorHint = vendorHint
         }
+    }
+
+    public enum HandshakeStage: String, Sendable, CaseIterable {
+        case tcpConnected, initCommandAcked, eventConnected, eventAcked
     }
 
     public let kind: TransportKind = .ptpip
@@ -79,6 +85,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         if isOpen { return }
         let cmd = try await connector.connect(host: configuration.host, port: configuration.port, timeout: configuration.connectTimeout)
         command = cmd
+        configuration.onProgress?(.tcpConnected)
         do {
             try await cmd.send(PTPIPPacket.initCommandRequest(guid: configuration.guid, name: configuration.clientName,
                                                               protocolVersion: PTPIPPacket.protocolVersion).encode())
@@ -88,6 +95,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
                 connectionNumber = conn
                 cameraGUID = guid
                 cameraName = name
+                configuration.onProgress?(.initCommandAcked)
             case .initFail(let reason):
                 throw PTPError.vendorGate(Self.describeInitFail(reason))
             default:
@@ -96,6 +104,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
 
             let evt = try await connector.connect(host: configuration.host, port: configuration.port, timeout: configuration.connectTimeout)
             event = evt
+            configuration.onProgress?(.eventConnected)
             try await evt.send(PTPIPPacket.initEventRequest(connectionNumber: connectionNumber).encode())
             var framer = PTPIPFramer()
             var acked = false
@@ -113,6 +122,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
                 // proceed without a confirmed event channel
             }
             startEventLoop(evt, framer: framer)
+            if acked { configuration.onProgress?(.eventAcked) }
             stateLock.lock(); _isOpen = true; stateLock.unlock()
         } catch {
             health.lastError = "\(error)"

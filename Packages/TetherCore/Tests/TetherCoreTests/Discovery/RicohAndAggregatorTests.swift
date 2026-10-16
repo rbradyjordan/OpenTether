@@ -60,8 +60,9 @@ final class CameraDiscovererTests: XCTestCase {
         try await agg.start()
         defer { Task { await agg.stop() } }
         a.emit([cam("bonjour:EOS R5", vendor: .canon), cam("bonjour:LUMIX", vendor: .panasonic)])
+        try await Task.sleep(nanoseconds: 150_000_000)
         b.emit([cam("bonjour:EOS R5", vendor: .canon, host: "192.168.1.6")])
-        try await Task.sleep(nanoseconds: 200_000_000)
+        try await Task.sleep(nanoseconds: 150_000_000)
         let list = agg.current
         XCTAssertEqual(list.count, 2, "\(list)")
         let eos = try XCTUnwrap(list.first { $0.id == "bonjour:EOS R5" })

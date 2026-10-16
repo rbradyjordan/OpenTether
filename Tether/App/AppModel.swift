@@ -150,6 +150,9 @@ final class AppModel {
 
     /// Makes a live connection the active shoot and switches to the Shoot tab.
     func activate(_ connection: LiveConnection) {
+        if let previous = shoot, previous.shootSession.id != connection.shoot.id {
+            Task { await previous.end() }
+        }
         let vm = ShootViewModel(connection: connection, app: self)
         shoot = vm
         selectedTab = .shoot
@@ -188,6 +191,7 @@ final class AppModel {
                                    store: store, cache: cache, previews: services.previews)
         let context = ReconnectContext.from(session: s)
         let connection = LiveConnection(session: tether, shoot: s, identity: s.camera, context: context, needsReconnect: context != .ftp)
+        if context == .ftp { Task { try? await tether.start() } }
         activate(connection)
     }
 

@@ -28,7 +28,7 @@ public actor ExportQueue {
     private let cache: CaptureCacheProxy
     private let sink: ExportSink
     private let renderer: ExportRenderer
-    private let cloud: TetherCloudClient?
+    private var cloud: TetherCloudClient?
     private let looks: LookResolver
     private let ftpClientFactory: (@Sendable (StoredFTPDestination) -> FTPUploadingBox?)?
     private var running = false
@@ -75,6 +75,9 @@ public actor ExportQueue {
         continuation.yield(.updated(job))
         kick()
     }
+
+    /// Swap the cloud client when the user changes the server URL.
+    public func setCloud(_ client: TetherCloudClient?) { cloud = client }
 
     public func pause() { paused = true; current?.cancel() }
     public func resume() { paused = false; kick() }

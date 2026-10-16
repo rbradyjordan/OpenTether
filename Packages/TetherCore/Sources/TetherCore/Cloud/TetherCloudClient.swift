@@ -115,6 +115,9 @@ public final class TetherCloudClient: @unchecked Sendable {
     public struct TestedCamera: Codable, Hashable, Sendable, Identifiable {
         public var vendor: String, model: String, transports: [String], status: String, notes: String
         public var id: String { "\(vendor)/\(model)" }
+        public init(vendor: String, model: String, transports: [String], status: String, notes: String) {
+            self.vendor = vendor; self.model = model; self.transports = transports; self.status = status; self.notes = notes
+        }
     }
 
     public let baseURL: URL
