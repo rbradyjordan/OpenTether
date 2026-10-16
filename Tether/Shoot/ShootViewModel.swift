@@ -27,6 +27,8 @@ final class ShootViewModel {
     var showLoupe = false
     var compareOtherID: String?
     var reconnectError: String?
+    /// "Use last time's look X?" banner, from the camera's workspace memory.
+    var restoreOffer: WorkspaceMemory.CameraMemory?
 
     let renderCache: LookRenderCache
     private unowned let app: AppModel
@@ -47,6 +49,7 @@ final class ShootViewModel {
         self.lookStack = LookStack(lookID: connection.shoot.lookID, strength: connection.shoot.lookStrength)
         self.renderCache = LookRenderCache(renderer: app.services.renderer, resolver: app.services.lookResolver, cache: app.cache)
         bind()
+        offerCameraMemory()
         if connection.needsReconnect {
             pendingReconnect = true
             status = .disconnected("Resumed after the app was closed")
@@ -140,6 +143,7 @@ final class ShootViewModel {
             }
         case .properties(let p):
             properties = p
+            if let id = identity?.id { app.memory.rememberExposure(cameraID: id, exposureDescriptors) }
         case .liveView(let frame):
             let payload = frame.jpeg.jpegPayload() ?? frame.jpeg
             if let img = UIImage(data: payload) { liveViewImage = img }
@@ -211,13 +215,42 @@ final class ShootViewModel {
         Task { await session.setShowNewestCapture(on) }
     }
 
+    // Review edits go through the editor so they are undoable and the library
+    // sees them; the editor writes the store and pushes the result back here.
     func rate(_ id: String, stars: Int) {
         if let i = items.firstIndex(where: { $0.id == id }) { items[i].rating = stars }
-        Task { await session.rate(id, stars: stars) }
+        app.commands.rate([id], stars)
+        if let handler = identity, handler.capabilities.contains(.rating) { Task { await session.rate(id, stars: stars) } }
     }
 
-    func flag(_ id: String, _ flag: CaptureFlag) { Task { await session.flag(id, flag) } }
-    func label(_ id: String, _ color: TetherCoreColorLabel) { Task { await session.label(id, color) } }
+    /// Flag buttons send the flag to set; tapping the active one clears it.
+    func flag(_ id: String, _ flag: CaptureFlag) {
+        app.commands.flag([id], flag)
+    }
+
+    func label(_ id: String, _ color: TetherCoreColorLabel) {
+        let current = items.first { $0.id == id }?.colorLabel
+        app.commands.label([id], current == color ? .none : color)
+    }
+
+    func addDisplayedToCollection() { if displayedItem != nil { sheet = .addToCollection } }
+
+    // MARK: Camera memory
+
+    private func offerCameraMemory() {
+        guard let id = identity?.id, let remembered = app.memory.camera(id), !remembered.look.isNeutral,
+              remembered.look != lookStack else { return }
+        restoreOffer = remembered
+    }
+
+    func acceptRestoreOffer() {
+        guard let offer = restoreOffer else { return }
+        setLook(offer.look)
+        if offer.destination != shootSession.destination { Task { try? await session.setDestination(offer.destination) } }
+        restoreOffer = nil
+    }
+
+    func declineRestoreOffer() { restoreOffer = nil }
 
     func delete(_ id: String) {
         Task {

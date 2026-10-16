@@ -2,7 +2,7 @@ import Foundation
 import TetherCore
 
 enum AppTab: Hashable {
-    case shoot, sessions, settings
+    case shoot, library, sessions, settings
 }
 
 /// Navigation destinations pushed inside the Connect / Sessions / Settings stacks.
@@ -25,7 +25,7 @@ enum AppRoute: Hashable {
 
 /// Sheets presented from the shoot screen.
 enum ShootSheet: Identifiable {
-    case looks, colorMatch, export, exportProgress, compare, property(TetherProperty), reconnect, newSession, diagnostics
+    case looks, colorMatch, export, exportProgress, compare, property(TetherProperty), reconnect, newSession, diagnostics, addToCollection
     var id: String {
         switch self {
         case .looks: return "looks"
@@ -37,6 +37,7 @@ enum ShootSheet: Identifiable {
         case .reconnect: return "reconnect"
         case .newSession: return "newSession"
         case .diagnostics: return "diagnostics"
+        case .addToCollection: return "addToCollection"
         }
     }
 }

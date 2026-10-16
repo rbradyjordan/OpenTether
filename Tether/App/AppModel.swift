@@ -11,6 +11,12 @@ final class AppModel {
     let settings: AppSettings
     let purchases: StoreKitPurchases
     let ftpReceiver: FTPReceiverModel
+    /// Between-session memory, the undoable review editor, the library and the
+    /// one command dispatcher every menu goes through.
+    let memory: WorkspaceMemory
+    let editor: ReviewEditor
+    private(set) var library: LibraryModel!
+    private(set) var commands: CommandDispatcher!
 
     private(set) var cloud: TetherCloudClient
     var store: SessionStore { services.store }
@@ -27,10 +33,14 @@ final class AppModel {
     var cloudReachable: Bool?
     var shoot: ShootViewModel?
     var selectedTab: AppTab = .shoot
+    /// Regular width: the shoot screen is a full-screen cover over the split view.
+    var showShootCover = false
     var toast: ToastMessage?
     var startupError: String?
 
     private var exportEventsTask: Task<Void, Never>?
+    private var automations: SessionAutomations?
+    private var automationsTask: Task<Void, Never>?
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     init(services: AppServices, settings: AppSettings) {
@@ -41,6 +51,12 @@ final class AppModel {
         self.purchases = StoreKitPurchases(cloud: { cloudBox.client })
         self.ftpReceiver = FTPReceiverModel(inbox: services.ftpInbox, settings: settings)
         self.cloudBox = cloudBox
+        let memory = WorkspaceMemory(store: services.store)
+        let editor = ReviewEditor(store: services.store, memory: memory)
+        self.memory = memory
+        self.editor = editor
+        self.library = LibraryModel(store: services.store, memory: memory, editor: editor)
+        self.commands = CommandDispatcher(app: self)
         ftpReceiver.onFileReceived = { [weak self] url, from in
             await self?.shoot?.ingestFTPFile(url, from: from)
         }
@@ -64,6 +80,7 @@ final class AppModel {
         reloadLooks()
         reloadExportJobs()
         observeExports()
+        library.start()
         await exportQueue.resume()
         Task { await refreshCloud() }
     }
@@ -156,14 +173,59 @@ final class AppModel {
         let vm = ShootViewModel(connection: connection, app: self)
         shoot = vm
         selectedTab = .shoot
+        showShootCover = true
         reloadSessions()
+        Task { await editor.attach(session: connection.session) }
+        library.attachLive(connection.session)
+        startAutomations(for: connection)
     }
 
     func endShoot() async {
         guard let shoot else { return }
         await shoot.end()
+        await automations?.stop()
+        automationsTask?.cancel()
+        automations = nil
+        await editor.attach(session: nil)
+        library.attachLive(nil)
+        memory.learn(from: shoot.shootSession)
         self.shoot = nil
+        showShootCover = false
         reloadSessions()
+        library.reloadSources()
+    }
+
+    /// Template tags, auto-collection and auto-export of picks run beside the
+    /// live session; their outcomes surface as toasts.
+    private func startAutomations(for connection: LiveConnection) {
+        let templateID = memory.get(WorkspaceMemory.sessionDefaults).templateID
+        let template = memory.templates().first { $0.id == templateID }
+        let rules = SessionAutomations.Rules.from(template: template, session: connection.shoot, memory: memory)
+        let auto = SessionAutomations(session: connection.shoot, rules: rules, store: store, editor: editor, queue: exportQueue, memory: memory)
+        automations = auto
+        automationsTask?.cancel()
+        let stream = auto.events
+        automationsTask = Task { [weak self] in
+            await auto.attach(to: connection.session)
+            for await event in stream {
+                guard let self else { return }
+                switch event {
+                case .exportQueued(let job):
+                    let n = job.items.count
+                    toast = ToastMessage(text: "\(n) pick\(n == 1 ? "" : "s") exporting to \(job.destination.displayName)", systemImage: "arrow.up.doc")
+                case .error(let message):
+                    toast = ToastMessage(text: message, systemImage: "exclamationmark.triangle")
+                case .tagged, .addedToCollection:
+                    library.reloadSources()
+                }
+            }
+        }
+    }
+
+    /// Returns to the live shoot from anywhere (tab on iPhone, cover on iPad).
+    func showShoot() {
+        selectedTab = .shoot
+        showShootCover = true
     }
 
     func deleteSession(_ session: ShootSession) {
