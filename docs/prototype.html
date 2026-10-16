@@ -176,6 +176,52 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
 @keyframes hint{0%,60%{opacity:1}100%{opacity:0}}
 #review .name{position:absolute;top:70px;left:0;right:0;text-align:center}
 .corner{position:absolute;right:0;bottom:0;width:72px;height:72px;background:transparent;border:0;cursor:pointer}
+
+/* Library */
+#library{background:var(--s1)}
+.libhead{display:flex;justify-content:space-between;align-items:center;padding:6px 20px 0}
+.libhead h2{margin:0;font-size:28px;font-weight:600;letter-spacing:-.02em}
+.libhead .icon{width:38px;height:38px;border-radius:11px}
+.sources{display:flex;gap:8px;padding:12px 20px 4px;overflow-x:auto;scrollbar-width:none}
+.src{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--s2);border:.5px solid var(--hair);color:var(--ink1);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.src .n{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+.src[aria-pressed="true"]{background:var(--s3);color:var(--ink0);box-shadow:inset 0 0 0 1px var(--accent)}
+.src .sd{width:7px;height:7px;border-radius:50%}
+.filterbar{display:flex;gap:6px;padding:8px 20px 0;overflow-x:auto;scrollbar-width:none;align-items:center}
+.fchip{flex:0 0 auto;font:inherit;font-size:12px;font-weight:600;padding:6px 10px;border-radius:10px;background:transparent;border:.5px solid var(--hair);color:var(--ink1);cursor:pointer}
+.fchip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.fsummary{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--ink2);white-space:nowrap}
+.grid{flex:1;min-height:0;overflow-y:auto;padding:10px 20px 110px;display:grid;grid-template-columns:repeat(var(--cols,3),1fr);gap:6px;align-content:start}
+.tile{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--s2);border:2px solid transparent;cursor:pointer;padding:0}
+.tile canvas{width:100%;height:100%;display:block;object-fit:cover}
+.tile.sel{border-color:var(--accent)}
+.tile.sel:after{content:"✓";position:absolute;top:5px;left:5px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#1A0B04;font-size:11px;font-weight:700;display:grid;place-items:center}
+.tile .st{position:absolute;left:5px;bottom:4px;font-size:8px;color:var(--pick);letter-spacing:-1px}
+.tile .pk{position:absolute;right:5px;bottom:4px;font-size:9px;color:var(--ok)}
+.tile .stk{position:absolute;right:5px;top:4px;font-family:var(--mono);font-size:8px;font-weight:600;background:rgba(0,0,0,.6);padding:1px 4px;border-radius:4px}
+.tile.rej canvas{opacity:.4}
+.batch{position:absolute;left:12px;right:12px;bottom:40px;background:var(--s2);border:.5px solid var(--hair);border-radius:18px;padding:10px 12px;display:flex;align-items:center;gap:8px;transform:translateY(120%);transition:transform .3s cubic-bezier(.2,.8,.2,1);z-index:4;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.batch.on{transform:none}
+.batch .cnt{font-family:var(--mono);font-size:13px;font-weight:600;padding-right:6px;border-right:.5px solid var(--hair)}
+.batch .icon{width:38px;height:38px;border-radius:11px;font-size:14px}
+.undo{position:absolute;left:50%;bottom:112px;transform:translate(-50%,10px);background:var(--s3);border:.5px solid var(--hair);padding:8px 10px 8px 14px;border-radius:999px;font-size:13px;opacity:0;transition:all .3s;z-index:4;display:flex;gap:10px;align-items:center;pointer-events:none}
+.undo.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.undo button{font:inherit;font-weight:700;color:var(--accent);background:none;border:0;cursor:pointer;min-height:28px}
+.palette{position:absolute;inset:60px 16px auto 16px;background:var(--s2);border:.5px solid var(--hair);border-radius:18px;overflow:hidden;z-index:7;display:none;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.palette.on{display:block}
+.palette input{width:100%;font:inherit;font-size:16px;padding:14px 16px;border:0;border-bottom:.5px solid var(--hair);background:transparent;color:var(--ink0);outline:none}
+.palette ul{list-style:none;margin:0;padding:6px;max-height:300px;overflow-y:auto}
+.palette li{display:flex;justify-content:space-between;align-items:center;padding:10px 10px;border-radius:10px;font-size:14px;cursor:pointer}
+.palette li:hover,.palette li.cur{background:var(--s3)}
+.palette li .k{font-family:var(--mono);font-size:11px;color:var(--ink2)}
+.palette .g{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);padding:8px 10px 2px}
+.inspector .kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:14px}
+.inspector .kv .cap{align-self:center}
+.inspector .kv .v{font-family:var(--mono);font-size:13px;text-align:right}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tags span{font-size:12px;font-weight:600;background:var(--s3);padding:5px 9px;border-radius:8px}
+.tags span.add{color:var(--accent);background:var(--accent-soft)}
+
 @media (prefers-reduced-motion: reduce){*{animation-duration:.01s!important;transition-duration:.12s!important}}
 </style>
 
@@ -190,6 +236,7 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
     <button data-s="hub" aria-pressed="false">Connect</button>
     <button data-s="connecting" aria-pressed="false">Connecting</button>
     <button data-s="shoot" aria-pressed="true">Shoot</button>
+    <button data-s="library" aria-pressed="false">Library</button>
     <button data-s="review" aria-pressed="false">Client review</button>
     <button data-s="export" aria-pressed="false">Export</button>
   </nav>
@@ -272,6 +319,30 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
         <div class="homebar"></div>
       </section>
 
+
+      <!-- LIBRARY -->
+      <section class="screen" id="library" aria-label="Library">
+        <div class="status"><span>9:41</span><span>●●● ᯤ ▮</span></div>
+        <div class="libhead"><h2>Library</h2><div style="display:flex;gap:6px"><button class="icon" id="undoBtn" aria-label="Undo" title="Undo">↶</button><button class="icon" id="palBtn" aria-label="Commands">⌘K</button><button class="icon" id="selBtn" aria-label="Select">Select</button></div></div>
+        <div class="sources" id="sources"></div>
+        <div class="filterbar" id="filterbar">
+          <button class="fchip" data-f="r4">4★+</button><button class="fchip" data-f="pick">Picks</button><button class="fchip" data-f="jpg">JPEG</button><button class="fchip" data-f="hero">#hero</button><button class="fchip" data-f="today">Today</button>
+          <span class="fsummary" id="fsummary">Everything · 184</span>
+        </div>
+        <div class="grid" id="grid" style="--cols:3"></div>
+        <div class="batch" id="batch"><span class="cnt" id="bcnt">0</span><button class="icon" data-c="rate5" aria-label="Rate 5">★5</button><button class="icon" data-c="pick" aria-label="Pick">⚑</button><button class="icon" data-c="rej" aria-label="Reject">✕</button><button class="icon" data-c="tag" aria-label="Tag">#</button><button class="icon" data-c="coll" aria-label="Add to collection">▤+</button><button class="icon" data-c="export" aria-label="Export" style="margin-left:auto;background:var(--accent);color:#1A0B04">↑</button></div>
+        <div class="undo" id="undo"><span id="undoText"></span><button id="undoNow">Undo</button></div>
+        <div class="palette" id="palette" role="dialog" aria-label="Commands"><input id="palIn" placeholder="Type a command…  rate, pick, tag, export, collection"><ul id="palList"></ul></div>
+        <div class="dim" id="ldim"></div>
+        <div class="sheet inspector" id="inspector" role="dialog" aria-label="Inspector"><div class="grabber"></div>
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px"><canvas id="insThumb" width="160" height="160" style="width:72px;height:72px;border-radius:12px"></canvas><div><h3 id="insName" style="margin:0">DSC04121.ARW</h3><p id="insLine" style="margin:2px 0 0">1/250 · ƒ/2.8 · ISO 400 · 6000×4000 · 48.2 MB</p></div></div>
+          <div class="kv"><span class="cap">Session</span><span class="v">Lookbook AW26</span><span class="cap">Camera</span><span class="v">Sony A7 IV</span><span class="cap">Collections</span><span class="v">Client selects · Best of</span><span class="cap">Exported</span><span class="v">Photos · yesterday</span></div>
+          <div class="tags"><span>#hero</span><span>#cover</span><span>#lookbook</span><span class="add">+ tag</span></div>
+          <div style="display:flex;gap:10px;margin-top:16px"><button class="btn" style="flex:1" id="insReveal">Reveal in session</button><button class="btn primary" style="flex:1" id="insClose">Done</button></div>
+        </div>
+        <div class="homebar"></div>
+      </section>
+
       <!-- CLIENT REVIEW -->
       <section class="screen" id="review" aria-label="Client review">
         <div class="big"><canvas id="reviewCanvas" width="780" height="520"></canvas></div>
@@ -319,6 +390,13 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
         <li><b>Pull the cable</b>: tap the status pill. The canvas dims, the pill turns red, and a sheet says what to do in one sentence.</li>
         <li><b>Client review</b>: the ▭ button. Black, image only. Hold the bottom-right corner to leave.</li>
       </ul></div>
+      <div><h2>Library</h2><ul>
+        <li><b>Sources</b> are collections: built-in shelves (All, Picks, 5★, Unrated, Today), your own, and smart ones saved from a filter. Counts update live.</li>
+        <li><b>Filter chips</b> compose; the summary line reads back exactly what the query is. Save it as a smart collection in one tap.</li>
+        <li><b>Select</b> (or hold a tile) brings up the batch bar. Every action is one undo step for the whole batch, including RAW+JPEG twins.</li>
+        <li><b>⌘K</b> opens the command palette: the same list that feeds every menu and shortcut.</li>
+        <li><b>Memory</b>: the grid reopens on the last collection, filter, zoom and frame you were looking at.</li>
+      </ul></div>
       <div><h2>Rules this follows</h2><ul>
         <li>True black behind the photograph; one accent, used only for "live".</li>
         <li>Numerals are monospaced and big enough to read at arm's length.</li>
@@ -348,7 +426,7 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
   // Screens
   const screens=$$('.screen');
   function show(id){screens.forEach(s=>s.classList.toggle('on',s.id===id));$$('nav.screens button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.s===id)));
-    if(id==='connecting')runSteps(); if(id==='review'){paint($('#reviewCanvas'),sel?frames[sel].i:0,sel?frames[sel].seed:1)} if(id==='export')quote();}
+    if(id==='connecting')runSteps(); if(id==='review'){paint($('#reviewCanvas'),sel?frames[sel].i:0,sel?frames[sel].seed:1)} if(id==='export')quote(); if(id==='library')gridRender();}
   $$('nav.screens button').forEach(b=>b.onclick=()=>show(b.dataset.s));
   $$('[data-go]').forEach(b=>b.onclick=()=>show(b.dataset.go));
   function runSteps(){const st=$$('#steps .step');st.forEach(s=>s.className='step');let i=0;(function next(){if(i>=st.length){setTimeout(()=>show('shoot'),500);return}st[i].classList.add('now');setTimeout(()=>{st[i].classList.remove('now');st[i].classList.add('done');i++;next()},reduce?80:420)})();}
@@ -430,6 +508,44 @@ nav.screens button:focus-visible{outline:2px solid var(--accent);outline-offset:
   $$('#dest .r').forEach(r=>r.onclick=()=>{$$('#dest .r').forEach(x=>x.classList.remove('on'));r.classList.add('on')});
   $$('.sw').forEach(s=>s.parentElement.onclick=()=>{s.classList.toggle('on');s.setAttribute('aria-checked',String(s.classList.contains('on')));if(s.parentElement.id==='rawRow')includeRaw=s.classList.contains('on');quote()});
   $('#go').onclick=()=>{$('#go').textContent='Queued · 0 of '+scopeN;setTimeout(()=>show('shoot'),900)};
+
+  // ---- Library ----
+  const L={items:[],sel:new Set(),selMode:false,filters:new Set(),source:'all',history:[]};
+  const sources=[{id:'all',n:'All photos',c:184},{id:'picks',n:'Picks',c:23},{id:'five',n:'Five stars',c:9},{id:'unrated',n:'Unrated',c:121},{id:'today',n:'Today',c:40},{id:'client',n:'Client selects',c:12,dot:'#4C8DFF'},{id:'best',n:'Best of lookbook ✦',c:4,dot:'#B07CFF'}];
+  for(let i=0;i<48;i++){L.items.push({id:'L'+i,i:i%6,seed:i*31+7,stars:[0,3,0,4,5,0,2,0][i%8],flag:i%7===0?'pick':(i%11===0?'rej':null),pair:i%2===0,tag:i%5===0,today:i<16})}
+  function srcRender(){const el=$('#sources');el.innerHTML='';sources.forEach(sc=>{const b=document.createElement('button');b.className='src';b.setAttribute('aria-pressed',String(L.source===sc.id));b.innerHTML=(sc.dot?`<span class="sd" style="background:${sc.dot}"></span>`:'')+`${sc.n} <span class="n">${count(sc.id)}</span>`;b.onclick=()=>{L.source=sc.id;L.sel.clear();srcRender();gridRender()};el.appendChild(b)})}
+  function inSource(it,id){switch(id){case 'picks':return it.flag==='pick';case 'five':return it.stars===5;case 'unrated':return it.stars===0&&!it.flag;case 'today':return it.today;case 'client':return it.id.endsWith('2')||it.id.endsWith('5');case 'best':return it.stars>=4;default:return true}}
+  function passes(it){if(!inSource(it,L.source))return false;if(L.filters.has('r4')&&it.stars<4)return false;if(L.filters.has('pick')&&it.flag!=='pick')return false;if(L.filters.has('jpg')&&it.pair)return false;if(L.filters.has('hero')&&!it.tag)return false;if(L.filters.has('today')&&!it.today)return false;return true}
+  function count(id){const keep=L.source;L.source=id;const n=L.items.filter(passes).length;L.source=keep;return n}
+  function summary(){const p=[];if(L.filters.has('r4'))p.push('4★+');if(L.filters.has('pick'))p.push('Pick');if(L.filters.has('jpg'))p.push('JPEG');if(L.filters.has('hero'))p.push('#hero');if(L.filters.has('today'))p.push('today');return (p.length?p.join(' · '):'Everything')+' · '+L.items.filter(passes).length}
+  function gridRender(){const g=$('#grid');g.innerHTML='';L.items.filter(passes).forEach(it=>{const t=document.createElement('button');t.className='tile'+(L.sel.has(it.id)?' sel':'')+(it.flag==='rej'?' rej':'');t.setAttribute('aria-label',it.id);const c=document.createElement('canvas');c.width=160;c.height=160;paint(c,it.i,it.seed);t.appendChild(c);
+    t.insertAdjacentHTML('beforeend',`${it.pair?'<span class="stk">RAW+JPG</span>':''}<span class="st">${'★'.repeat(it.stars)}</span>${it.flag==='pick'?'<span class="pk">⚑</span>':''}`);
+    let hold;t.addEventListener('pointerdown',()=>{hold=setTimeout(()=>{L.selMode=true;L.sel.add(it.id);gridRender();if(navigator.vibrate)navigator.vibrate(6)},420)});t.addEventListener('pointerup',()=>clearTimeout(hold));t.addEventListener('pointerleave',()=>clearTimeout(hold));
+    t.onclick=()=>{if(L.selMode){L.sel.has(it.id)?L.sel.delete(it.id):L.sel.add(it.id);if(!L.sel.size)L.selMode=false;gridRender()}else{openInspector(it)}};g.appendChild(t)});
+    $('#fsummary').textContent=summary();$('#bcnt').textContent=L.sel.size;$('#batch').classList.toggle('on',L.sel.size>0);$('#selBtn').textContent=L.selMode?'Done':'Select';$('#undoBtn').style.opacity=L.history.length?1:.4;srcCounts()}
+  function srcCounts(){$$('#sources .src').forEach((b,i)=>{b.querySelector('.n').textContent=count(sources[i].id)})}
+  $$('.fchip').forEach(ch=>ch.onclick=()=>{const f=ch.dataset.f;L.filters.has(f)?L.filters.delete(f):L.filters.add(f);ch.setAttribute('aria-pressed',String(L.filters.has(f)));gridRender()});
+  $('#selBtn').onclick=()=>{L.selMode=!L.selMode;if(!L.selMode)L.sel.clear();gridRender()};
+  function batchOp(op){const ids=[...L.sel];if(!ids.length)return;const before=ids.map(id=>({...L.items.find(x=>x.id===id)}));let title='';ids.forEach(id=>{const it=L.items.find(x=>x.id===id);if(op==='rate5'){it.stars=5;title='Rate 5★'}if(op==='pick'){it.flag=it.flag==='pick'?null:'pick';title='Pick'}if(op==='rej'){it.flag=it.flag==='rej'?null:'rej';title='Reject'}if(op==='tag'){it.tag=true;title='Tag #hero'}if(op==='coll'){title='Add to Client selects'}});
+    if(op==='export'){toastL(`${ids.length} photos · exporting to Photos`);L.sel.clear();L.selMode=false;gridRender();return}
+    L.history.push({before,title});showUndo(`${title} · ${ids.length} photos`);L.sel.clear();L.selMode=false;gridRender()}
+  $$('#batch .icon').forEach(b=>b.onclick=()=>batchOp(b.dataset.c));
+  function showUndo(t){const u=$('#undo');$('#undoText').textContent=t;u.classList.add('on');clearTimeout(u._t);u._t=setTimeout(()=>u.classList.remove('on'),4000)}
+  function undoL(){const h=L.history.pop();if(!h)return;h.before.forEach(b=>{const it=L.items.find(x=>x.id===b.id);Object.assign(it,b)});$('#undo').classList.remove('on');toastL(`Undid ${h.title}`);gridRender()}
+  $('#undoNow').onclick=undoL;$('#undoBtn').onclick=undoL;
+  function toastL(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1800)}
+  // Inspector
+  function openInspector(it){paint($('#insThumb'),it.i,it.seed);$('#insName').textContent=(it.pair?'IMG_':'DSC0')+(4100+parseInt(it.id.slice(1)))+(it.pair?'.CR3 + .JPG':'.JPG');$('#inspector').classList.add('open');$('#ldim').classList.add('on')}
+  function closeL(){$('#inspector').classList.remove('open');$('#ldim').classList.remove('on');$('#palette').classList.remove('on')}
+  $('#ldim').onclick=closeL;$('#insClose').onclick=closeL;$('#insReveal').onclick=()=>{closeL();show('shoot')};
+  // Command palette
+  const cmds=[['Review','Rate 5 stars','5','rate5'],['Review','Pick','P','pick'],['Review','Reject','X','rej'],['Organize','Add tags…','T','tag'],['Organize','Add to collection…','⌘K','coll'],['Organize','New collection from selection','',''],['Organize','Save filter as smart collection','',''],['Export','Export…','⌘E','export'],['Export','Export like last time','⇧⌘E','export'],['View','Compare','C',''],['View','Client review','⇧R',''],['View','Select all','⌘A','all'],['Review','Undo','⌘Z','undo']];
+  function palRender(q){const ul=$('#palList');ul.innerHTML='';let g='';cmds.filter(c=>!q||c[1].toLowerCase().includes(q)||c[2].toLowerCase()===q).forEach((c,i)=>{if(c[0]!==g){g=c[0];ul.insertAdjacentHTML('beforeend',`<div class="g">${g}</div>`)}const li=document.createElement('li');li.className=i===0?'cur':'';li.innerHTML=`<span>${c[1]}</span><span class="k">${c[2]}</span>`;li.onclick=()=>{runCmd(c[3])};ul.appendChild(li)})}
+  function runCmd(k){closeL();if(k==='all'){L.selMode=true;L.items.filter(passes).forEach(it=>L.sel.add(it.id));gridRender();return}if(k==='undo'){undoL();return}if(k){if(!L.sel.size){L.selMode=true;L.items.filter(passes).slice(0,3).forEach(it=>L.sel.add(it.id))}batchOp(k)}}
+  $('#palBtn').onclick=()=>{$('#palette').classList.add('on');$('#ldim').classList.add('on');$('#palIn').value='';palRender('');$('#palIn').focus()};
+  $('#palIn').oninput=e=>palRender(e.target.value.toLowerCase().trim());
+  $('#palIn').onkeydown=e=>{if(e.key==='Enter'){const cur=$('#palList li.cur')||$('#palList li');if(cur)cur.click()}if(e.key==='Escape')closeL()};
+  srcRender();gridRender();
   quote();pill();
 })();
 </script>

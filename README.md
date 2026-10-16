@@ -22,6 +22,7 @@ tether-ios/
 │       ├── Store/           SQLite persistence (sessions, captures, exports, looks, settings)
 │       ├── Looks/           .cube 3D LUT parse/sample/blend, LookStack, LookResolver
 │       ├── Delivery/        ExportJob, credits model, resumable ExportQueue
+│       ├── Library/         collections (manual + smart/SQL), tags, stacks, WorkspaceMemory, ReviewEditor (undo), Commands, SessionAutomations
 │       ├── Cloud/           typed client for the backend contract
 │       └── Diagnostics/     cable/power and Wi-Fi checklists
 ├── Tether/                  SwiftUI app (iOS 17+): every screen on the user journey
@@ -40,6 +41,7 @@ tether-ios/
 | Discovery + SSID monitor | Complete | unit tests with canned SSDP/Bonjour/Fuji payloads, loopback Fuji dial-back |
 | FTP server + clients | Complete (pure-Swift FTP; FTPS via NSStream TLS on Apple; libcurl client linked on Linux through `Sources/CCurl`) | loopback integration tests, incl. libcurl uploading into our own server |
 | Capture pipeline, store, review, export queue, looks | Complete | unit tests (recovery, pairs, show-newest/keep-selection, resumable export, credits quote) |
+| Library: collections, smart filters, tags, between-session memory, undoable batch edits, command registry, automations | Complete | 14 power-user scenario tests (bulk cull + undo, collections under deletes, templates and camera memory across relaunch, auto-export picks, 20k-frame speed) |
 | Cloud backend | Complete | `cargo test` (36), fmt + clippy clean |
 | SwiftUI app | Written; every screen (80 files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
 
@@ -89,15 +91,32 @@ new accounts get 10 free credits a month.
    pick / reject / colour.
 5. **Review** — loupe, compare, client review mode (fullscreen, stars and
    flags round-trip, long-press to leave).
-6. **Looks** — cloud looks as 3D LUTs applied on device; AI colour match
+6. **Library** — every frame from every session. Built-in shelves (All, Picks,
+   Five stars, Unrated, Today, Rejects), your collections, smart collections
+   saved from any filter, tags with autocomplete, RAW+JPEG stacks, a batch
+   bar whose every action is one undo step, a command palette, and an
+   inspector. It reopens on the collection, filter, zoom and frame you left.
+7. **Looks** — cloud looks as 3D LUTs applied on device; AI colour match
    (1 credit) returns a LUT for the session.
-7. **Export** — scope (all / picks / rated), destination (Photos, Files,
+8. **Export** — scope (all / picks / rated), destination (Photos, Files,
    Share, FTP, cloud batch), options, a credits quote (“N credits · M
    watermarked”), resumable progress with pause/retry.
-8. **Credits** — balance, tier, StoreKit packs, free-tier rules.
-9. **Settings** — cloud URL, FTP defaults, PTP transaction log, tested-camera
+9. **Credits** — balance, tier, StoreKit packs, free-tier rules.
+10. **Settings** — cloud URL, FTP defaults, PTP transaction log, tested-camera
    matrix, legal note (generic PTP import is safe; vendor control is the grey
    area).
+
+## Between-session memory
+
+`WorkspaceMemory` keeps, per install: the last session's destination,
+routing, look and canvas mode; per camera, its last look, destination and
+exposure values plus the template it was used with; per collection, the
+filter, sort, zoom, stacking and the frame you were on; the last export
+destination and options; recent tags, searches and collections; and
+session templates with name patterns (`{date} {name} {camera} {n}`). A new
+session starts from the template this camera used last. Templates can tag
+every frame, drop it into a collection, and auto-export picks as one
+debounced job (`SessionAutomations`).
 
 ## Decisions that differ from the blueprint, and why
 
