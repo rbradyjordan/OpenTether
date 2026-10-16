@@ -23,6 +23,7 @@ tether-ios/
 │       ├── Looks/           .cube 3D LUT parse/sample/blend, LookStack, LookResolver
 │       ├── Delivery/        ExportJob, credits model, resumable ExportQueue
 │       ├── Library/         collections (manual + smart/SQL), tags, stacks, WorkspaceMemory, ReviewEditor (undo), Commands, SessionAutomations
+│       ├── Interop/         XMP sidecars + embedded packets, EXIF reader, naming templates, Capture One layouts, manifests
 │       ├── Cloud/           typed client for the backend contract
 │       └── Diagnostics/     cable/power and Wi-Fi checklists
 ├── Tether/                  SwiftUI app (iOS 17+): every screen on the user journey
@@ -42,6 +43,7 @@ tether-ios/
 | FTP server + clients | Complete (pure-Swift FTP; FTPS via NSStream TLS on Apple; libcurl client linked on Linux through `Sources/CCurl`) | loopback integration tests, incl. libcurl uploading into our own server |
 | Capture pipeline, store, review, export queue, looks | Complete | unit tests (recovery, pairs, show-newest/keep-selection, resumable export, credits quote) |
 | Library: collections, smart filters, tags, between-session memory, undoable batch edits, command registry, automations | Complete | 14 power-user scenario tests (bulk cull + undo, collections under deletes, templates and camera memory across relaunch, auto-export picks, 20k-frame speed) |
+| Interop: XMP (Lightroom / Capture One / Photo Mechanic conventions), EXIF, naming templates, folder layouts, manifests, ingest of incoming XMP | Complete | 9 tests incl. an end-to-end export into a Capture One tree with sidecars, embedded XMP and manifests (`docs/INTEROP.md`) |
 | Cloud backend | Complete | `cargo test` (36), fmt + clippy clean |
 | SwiftUI app | Written; every screen (80 files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
 
