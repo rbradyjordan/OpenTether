@@ -1,9 +1,10 @@
 import SwiftUI
 import TetherCore
 
-/// The main tethering screen.
+/// The main tethering screen. Always dark: the photograph is the interface.
 struct ShootView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: ShootViewModel
     @State private var showEndConfirm = false
 
@@ -11,26 +12,16 @@ struct ShootView: View {
         NavigationStack {
             GeometryReader { geo in
                 VStack(spacing: 0) {
-                    header
-                    ZStack(alignment: .bottom) {
-                        if model.liveViewActive, model.canLiveView {
-                            LiveViewView(image: model.liveViewImage)
-                        } else {
-                            EditCanvasView(model: model)
-                        }
-                        canvasOverlay
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onTapGesture { if model.displayedItem != nil, !model.liveViewActive { model.showLoupe = true } }
-                    .accessibilityLabel(model.displayedItem.map { "Canvas showing \($0.filename), double tap to open loupe" } ?? "Canvas, no capture yet")
+                    ShootHeader(model: model, showEndConfirm: $showEndConfirm)
+                    canvas
                     ExposureBarView(model: model)
                     FilmstripView(model: model)
-                        .frame(height: 84)
+                        .frame(height: 88)
                     ShootBottomBar(model: model)
                 }
                 .frame(width: geo.size.width)
             }
-            .background(Theme.background)
+            .background(TetherColor.surface0)
             .toolbar(.hidden, for: .navigationBar)
             .toast($model.toast) { model.showNewest() }
             .sheet(item: $model.sheet) { sheet in sheetView(sheet) }
@@ -43,64 +34,28 @@ struct ShootView: View {
                 Text("The camera link is closed. Captures stay in the session and can be exported later.")
             }
         }
+        .forceDark()
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            StatusPill(title: model.cameraName, subtitle: model.transportName, tint: statusColor,
-                       systemImage: model.isDisconnected ? "bolt.slash" : nil)
-            if let battery = model.batteryText {
-                StatusPill(title: battery, systemImage: "battery.75percent")
+    /// Canvas dims to 60 % while the link is down; the reconnect sheet does the talking.
+    private var canvas: some View {
+        ZStack(alignment: .bottom) {
+            if model.liveViewActive, model.canLiveView {
+                LiveViewView(image: model.liveViewImage)
+            } else {
+                EditCanvasView(model: model)
             }
-            if model.downloadsInFlight > 0 {
-                StatusPill(title: "\(model.downloadsInFlight)", systemImage: "arrow.down.circle")
-                    .accessibilityLabel("\(model.downloadsInFlight) downloads in flight")
-            }
-            Spacer(minLength: 4)
-            StatusPill(title: model.statusText, tint: statusColor)
-            Menu {
-                Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
-                if model.isDisconnected { Button { model.sheet = .reconnect } label: { Label("Reconnect", systemImage: "arrow.clockwise") } }
-                Button(role: .destructive) { showEndConfirm = true } label: { Label("End session", systemImage: "stop.circle") }
-            } label: {
-                Image(systemName: "ellipsis.circle").font(.title3).frame(width: 36, height: 36)
-            }
-            .accessibilityLabel("Session menu")
+            CanvasOverlay(model: model)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    private var statusColor: Color {
-        switch model.status {
-        case .ready: return Theme.success
-        case .capturing: return Theme.accent
-        case .disconnected: return Theme.danger
-        case .ended: return Theme.textSecondary
-        default: return Theme.warning
-        }
-    }
-
-    @ViewBuilder private var canvasOverlay: some View {
-        HStack {
-            Picker("Selection", selection: Binding(get: { model.shootSession.showNewestCapture }, set: { model.setShowNewestCapture($0) })) {
-                Text("Show Newest").tag(true)
-                Text("Keep Selection").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
-            .accessibilityLabel("Which capture to show")
-            Spacer()
-            if model.canLiveView {
-                Button { model.toggleLiveView() } label: {
-                    Image(systemName: model.liveViewActive ? "video.fill" : "video")
-                        .font(.title3).frame(width: 40, height: 40)
-                        .background(Theme.surfaceRaised.opacity(0.8), in: Circle())
-                }
-                .accessibilityLabel(model.liveViewActive ? "Stop live view" : "Start live view")
-            }
-        }
-        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .opacity(model.isDisconnected ? 0.6 : 1)
+        .animation(Motion.spring(TetherMotion.settle, reduce: reduceMotion), value: model.isDisconnected)
+        .contentShape(Rectangle())
+        .onTapGesture { if model.displayedItem != nil, !model.liveViewActive { model.showLoupe = true } }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.displayedItem.map { "Canvas showing \($0.filename)" } ?? "Canvas, no capture yet")
+        .accessibilityHint(model.displayedItem == nil ? "" : "Double tap to open the loupe")
+        .accessibilityAction(named: "Capture") { model.capture(autofocus: true) }
     }
 
     @ViewBuilder private func sheetView(_ sheet: ShootSheet) -> some View {
@@ -113,6 +68,118 @@ struct ShootView: View {
         case .property(let p): PropertyPickerSheet(model: model, property: p)
         case .reconnect: ReconnectView(model: model)
         case .newSession: NewSessionSheet()
+        case .diagnostics: ShootDiagnosticsSheet(model: model)
         }
+    }
+}
+
+/// Status pill (tap → diagnostics) and the session menu.
+private struct ShootHeader: View {
+    @Bindable var model: ShootViewModel
+    @Binding var showEndConfirm: Bool
+
+    var body: some View {
+        HStack(spacing: TetherSpace.s) {
+            StatusPill(tone: tone, title: model.cameraName, transportSymbol: transportSymbol,
+                       battery: model.batteryText, downloads: model.downloadsInFlight, detail: detail) {
+                model.sheet = .diagnostics
+            }
+            Spacer(minLength: TetherSpace.xs)
+            Menu {
+                Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+                if model.isDisconnected {
+                    Button { model.sheet = .reconnect } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
+                }
+                Button(role: .destructive) { showEndConfirm = true } label: { Label("End session", systemImage: "stop.circle") }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(TetherColor.ink1)
+                    .frame(width: TetherHit.min, height: TetherHit.min)
+            }
+            .accessibilityLabel("Session menu")
+        }
+        .padding(.horizontal, TetherSpace.m)
+        .padding(.vertical, TetherSpace.xs)
+        .overlayTypeCap()
+    }
+
+    private var tone: StatusPill.Tone {
+        switch model.status {
+        case .ready, .capturing: return .ok
+        case .disconnected: return .danger
+        case .ended: return .neutral
+        default: return .warn
+        }
+    }
+
+    /// Only shown when the pill needs to say more than "ready".
+    private var detail: String? {
+        switch model.status {
+        case .ready: return nil
+        case .capturing: return nil
+        default: return model.statusText
+        }
+    }
+
+    private var transportSymbol: String? {
+        switch model.identity?.transport ?? model.shootSession.transport {
+        case .usb?: return "cable.connector"
+        case .ptpip?, .ricohHTTP?: return "wifi"
+        case .ftpPush?: return "arrow.down.doc"
+        case nil: return nil
+        }
+    }
+}
+
+/// "Show newest / Keep selection" plus the live-view toggle, over the canvas.
+private struct CanvasOverlay: View {
+    @Bindable var model: ShootViewModel
+
+    var body: some View {
+        HStack(alignment: .bottom) {
+            Picker("Which capture to show", selection: Binding(get: { model.shootSession.showNewestCapture }, set: { model.setShowNewestCapture($0) })) {
+                Text("Show newest").tag(true)
+                Text("Keep selection").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 240)
+            .accessibilityLabel("Which capture to show")
+            Spacer()
+            if model.canLiveView {
+                Button { model.toggleLiveView() } label: {
+                    Image(systemName: model.liveViewActive ? "video.fill" : "video")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(model.liveViewActive ? TetherColor.accent : TetherColor.ink0)
+                        .frame(width: TetherHit.min, height: TetherHit.min)
+                        .background(TetherColor.surface2.opacity(0.85), in: Circle())
+                        .overlay(Circle().strokeBorder(TetherColor.hairline, lineWidth: 0.5))
+                }
+                .accessibilityLabel(model.liveViewActive ? "Stop live view" : "Start live view")
+            }
+        }
+        .padding(TetherSpace.m)
+        .overlayTypeCap()
+    }
+}
+
+/// The status pill expands into the diagnostics checklist.
+private struct ShootDiagnosticsSheet: View {
+    var model: ShootViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    private var wired: Bool {
+        if case .usb = model.context { return true }
+        return false
+    }
+
+    var body: some View {
+        NavigationStack {
+            DiagnosticsView(wired: wired)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .forceDark()
+        .presentationDetents([.large])
     }
 }

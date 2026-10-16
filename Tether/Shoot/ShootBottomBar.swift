@@ -1,68 +1,106 @@
 import SwiftUI
 import TetherCore
 
+/// Bottom 40 %: rating centred with Reject / Pick flanking it, then the
+/// capture ring centred with Looks and Export beside it and everything
+/// secondary in one trailing menu.
 struct ShootBottomBar: View {
     @Bindable var model: ShootViewModel
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: TetherSpace.s) {
             if let item = model.displayedItem {
-                HStack(spacing: 14) {
-                    RatingStars(rating: item.rating, size: 18) { model.rate(item.id, stars: $0) }
-                    Spacer()
-                    FlagButtons(flag: item.flag) { model.flag(item.id, $0) }
-                    Menu {
-                        ForEach(TetherCoreColorLabel.allCases) { label in
-                            Button(label == .none ? "Clear label" : label.rawValue.capitalized) { model.label(item.id, label) }
-                        }
-                    } label: {
-                        Image(systemName: "circle.fill").font(.title3)
-                            .foregroundStyle(item.colorLabel == .none ? Theme.textSecondary : ColorLabelStyle.color(for: item.colorLabel))
-                            .frame(width: 32, height: 32)
-                    }
-                    .accessibilityLabel("Colour label, currently \(item.colorLabel.rawValue)")
-                }
-                .padding(.horizontal, 14)
+                ratingRow(item)
+            } else {
+                Color.clear.frame(height: TetherHit.min)
             }
-            HStack(alignment: .center, spacing: 0) {
-                tool("Compare", "rectangle.split.2x1") { model.sheet = .compare }
-                    .disabled(model.readyItems.count < 2)
-                tool("Review", "person.crop.rectangle") { model.showClientReview = true }
-                    .disabled(model.readyItems.isEmpty)
-                shutter
+            captureRow
+        }
+        .padding(.top, TetherSpace.s)
+        .padding(.bottom, TetherSpace.xs)
+        .background(TetherColor.surface1)
+        .overlay(alignment: .top) { Rectangle().fill(TetherColor.hairline).frame(height: 0.5) }
+        .overlayTypeCap()
+    }
+
+    private func ratingRow(_ item: CaptureItem) -> some View {
+        HStack(spacing: TetherSpace.m) {
+            FlagButton(kind: .reject, flag: item.flag) { model.flag(item.id, $0) }
+            Spacer(minLength: 0)
+            RatingStars(rating: item.rating, size: 28) { model.rate(item.id, stars: $0) }
+            Spacer(minLength: 0)
+            FlagButton(kind: .pick, flag: item.flag) { model.flag(item.id, $0) }
+        }
+        .padding(.horizontal, TetherSpace.l)
+    }
+
+    private var captureRow: some View {
+        ZStack {
+            shutter
+            HStack(spacing: TetherSpace.xs) {
                 tool("Looks", "camera.filters") { model.sheet = .looks }
+                Spacer()
                 tool("Export", "square.and.arrow.up") { model.sheet = .export }
                     .disabled(model.readyItems.isEmpty)
+                secondaryMenu
             }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, TetherSpace.s)
         }
-        .padding(.top, 6)
-        .background(Theme.surface)
+        .frame(minHeight: CaptureRing.diameter + TetherSpace.s)
     }
 
     @ViewBuilder private var shutter: some View {
         if model.canCapture {
-            CaptureButton(enabled: model.isLive, busy: model.isCapturing) { af in model.capture(autofocus: af) }
-                .frame(maxWidth: .infinity)
+            CaptureRing(enabled: model.isLive, busy: model.isCapturing) { af in model.capture(autofocus: af) }
         } else {
             VStack(spacing: 2) {
-                Image(systemName: "arrow.down.circle").font(.title2)
-                Text("Import only").font(.caption2)
+                Image(systemName: "arrow.down.circle").font(.system(size: 22, weight: .medium))
+                Text("Import only").tetherCaption()
             }
-            .foregroundStyle(Theme.textSecondary)
-            .frame(maxWidth: .infinity, minHeight: 66)
+            .foregroundStyle(TetherColor.ink1)
+            .frame(width: CaptureRing.diameter, height: CaptureRing.diameter)
             .accessibilityLabel("Import only, this camera has no remote capture")
         }
+    }
+
+    private var secondaryMenu: some View {
+        Menu {
+            Button { model.sheet = .compare } label: { Label("Compare", systemImage: "rectangle.split.2x1") }
+                .disabled(model.readyItems.count < 2)
+            Button { model.showClientReview = true } label: { Label("Client review", systemImage: "person.crop.rectangle") }
+                .disabled(model.readyItems.isEmpty)
+            if let item = model.displayedItem {
+                Menu {
+                    ForEach(TetherCoreColorLabel.allCases) { label in
+                        Button {
+                            model.label(item.id, label)
+                        } label: {
+                            Label(label == .none ? "Clear label" : label.rawValue.capitalized,
+                                  systemImage: item.colorLabel == label ? "checkmark.circle.fill" : "circle.fill")
+                        }
+                    }
+                } label: {
+                    Label("Colour label", systemImage: "tag")
+                }
+            }
+            Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(TetherColor.ink1)
+                .frame(width: TetherHit.min, height: TetherHit.min)
+        }
+        .accessibilityLabel("More actions")
     }
 
     private func tool(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 3) {
-                Image(systemName: icon).font(.title3)
-                Text(title).font(.caption2)
+                Image(systemName: icon).font(.system(size: 20, weight: .medium))
+                Text(title).tetherCaption()
             }
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .foregroundStyle(TetherColor.ink1)
+            .frame(minWidth: 56, minHeight: TetherHit.min + 8)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

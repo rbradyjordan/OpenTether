@@ -4,6 +4,7 @@ import TetherCore
 struct ExportSheet: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var sessionID: String
     var items: [CaptureItem]
     var selectedID: String?
@@ -30,6 +31,7 @@ struct ExportSheet: View {
             .map { ExportJob.Item(id: $0.id, filename: $0.filename, kind: $0.kind, bytes: $0.bytes) }
     }
     private var quote: CreditsState.Quote { app.credits.quote(for: previewItems, forceWatermark: false) }
+    private var quoteLine: ExportQuoteLine { CreditsFormatting.quoteLine(photos: previewItems.count, quote: quote, tier: app.credits.tier) }
 
     var body: some View {
         NavigationStack {
@@ -42,7 +44,6 @@ struct ExportSheet: View {
                     if case .rated = scope {
                         Stepper("Minimum rating: \(minRating)", value: $minRating, in: 1 ... 5)
                     }
-                    LabeledContent("Frames", value: "\(previewItems.count)")
                 }
                 Section("Where") {
                     Picker("Destination", selection: $destination) {
@@ -67,39 +68,66 @@ struct ExportSheet: View {
                         }
                     }
                     VStack(alignment: .leading) {
-                        Text("JPEG quality \(Int(quality * 100))")
+                        Text("JPEG quality \(Int(quality * 100))").contentTransition(.numericText())
                         Slider(value: $quality, in: 0.5 ... 1, step: 0.02) { Text("JPEG quality") }
                     }
                 }
-                Section {
-                    HStack {
-                        Text(CreditsFormatting.quoteText(quote, tier: app.credits.tier))
-                        Spacer()
-                        NavigationLink("Credits", value: AppRoute.credits).font(.subheadline)
-                    }
-                    if quote.watermarkedItems > 0 {
-                        Text("You are out of free credits; watermarked frames carry a translucent TETHER mark. Buy credits or go Pro to remove it.")
-                            .font(.footnote).foregroundStyle(Theme.textSecondary)
-                    }
-                } header: { Text("Cost") }
-                if let error { Section { Text(error).foregroundStyle(Theme.danger) } }
+                if let error { Section { Text(error).foregroundStyle(TetherColor.danger) } }
             }
-            .scrollContentBackground(.hidden)
-            .background(Theme.background)
+            .tint(TetherColor.accent)
+            .safeAreaInset(edge: .bottom) { quoteBar }
             .navigationTitle("Export")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Export \(previewItems.count)") { Task { await enqueue() } }.disabled(previewItems.isEmpty)
-                }
             }
             .onAppear {
                 ftpDestinations = (try? app.store.ftpDestinations()) ?? []
                 if look.isNeutral { applyLook = false }
             }
         }
+    }
+
+    /// Live quote plus the one action; sits in the thumb zone.
+    private var quoteBar: some View {
+        VStack(spacing: TetherSpace.m) {
+            HStack(alignment: .firstTextBaseline) {
+                quoteText
+                    .font(TetherFont.hud)
+                    .contentTransition(.numericText())
+                    .animation(Motion.spring(TetherMotion.snap, reduce: reduceMotion), value: quoteLine)
+                Spacer()
+                NavigationLink("Credits", value: AppRoute.credits).font(TetherFont.hud)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(quoteLine.text)
+            if quote.watermarkedItems > 0, app.credits.tier != .pro {
+                Text("Out of free credits: watermarked frames carry a translucent TETHER mark.")
+                    .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button { Task { await enqueue() } } label: {
+                Text(previewItems.isEmpty ? "Nothing to export" : "Export \(previewItems.count)")
+                    .font(TetherFont.headline)
+                    .frame(maxWidth: .infinity, minHeight: TetherHit.min + 6)
+                    .contentTransition(.numericText())
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(TetherColor.accent)
+            .disabled(previewItems.isEmpty)
+        }
+        .padding(TetherSpace.l)
+        .background(.bar)
+        .overlay(alignment: .top) { Rectangle().fill(TetherColor.hairline).frame(height: 0.5) }
+    }
+
+    private var quoteText: Text {
+        var text = Text(quoteLine.lead).foregroundStyle(TetherColor.ink0)
+        if let watermark = quoteLine.watermark {
+            text = text + Text(" · ").foregroundStyle(TetherColor.ink2) + Text(watermark).foregroundStyle(TetherColor.warn)
+        }
+        return text
     }
 
     private func enqueue() async {

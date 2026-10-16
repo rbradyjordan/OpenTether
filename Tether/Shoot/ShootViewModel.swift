@@ -120,7 +120,7 @@ final class ShootViewModel {
             status = s
             isCapturing = s == .capturing
             if case .disconnected(let reason) = s, !isReconnecting, context != .ftp {
-                HapticFeedback.warning()
+                TetherHaptic.disconnected()
                 toast = ToastMessage(text: reason, systemImage: "bolt.slash")
                 sheet = .reconnect
             }
@@ -132,7 +132,7 @@ final class ShootViewModel {
                 Task { await refreshCounters() }
             }
             if becameReady {
-                HapticFeedback.light()
+                TetherHaptic.frameArrived()
                 if !shootSession.showNewestCapture {
                     unseenCount += 1
                     toast = ToastMessage(text: "New frame \(item.filename)", systemImage: "photo.badge.plus", action: "Show")
@@ -161,7 +161,7 @@ final class ShootViewModel {
 
     func capture(autofocus: Bool) {
         guard canCapture, isLive else { return }
-        HapticFeedback.shutter()
+        // The capture ring plays the rigid haptic itself: one haptic per event.
         Task {
             do { try await session.capture(autofocus: autofocus) } catch {
                 toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle")
@@ -196,7 +196,7 @@ final class ShootViewModel {
     }
 
     func select(_ id: String?) {
-        HapticFeedback.selection()
+        TetherHaptic.rate()
         Task { await session.select(id) }
     }
 
@@ -301,7 +301,7 @@ final class ShootViewModel {
                 }
                 adopt(connection)
                 sheet = nil
-                HapticFeedback.success()
+                TetherHaptic.connected()
                 toast = ToastMessage(text: "Reconnected to \(cameraName)", systemImage: "checkmark.circle")
             } catch is CancellationError {
                 status = .disconnected("Reconnect cancelled")

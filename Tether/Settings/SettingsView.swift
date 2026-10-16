@@ -1,6 +1,7 @@
 import SwiftUI
 import TetherCore
 
+/// Grouped settings; follows the system scheme (light by default).
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @State private var cloudURL = ""
@@ -14,15 +15,7 @@ struct SettingsView: View {
                 TextField("Base URL", text: $cloudURL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onSubmit { app.applyCloudBaseURL(cloudURL) }
                     .accessibilityLabel("Cloud base URL")
-                HStack {
-                    Text("Status")
-                    Spacer()
-                    switch app.cloudReachable {
-                    case true?: Label("Reachable", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.success)
-                    case false?: Label("Unreachable", systemImage: "xmark.circle.fill").foregroundStyle(Theme.danger)
-                    case nil: Text("Checking…").foregroundStyle(Theme.textSecondary)
-                    }
-                }
+                LabeledContent("Status") { cloudStatus }
                 LabeledContent("Account", value: app.settings.accountID ?? "Not registered")
                 LabeledContent("Device", value: String(app.settings.deviceID.prefix(8)))
                 NavigationLink("Credits", value: AppRoute.credits)
@@ -58,8 +51,7 @@ struct SettingsView: View {
                 Button("Replay onboarding") { app.settings.hasOnboarded = false }
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tint(TetherColor.accent)
         .navigationTitle("Settings")
         .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
         .onAppear {
@@ -67,6 +59,15 @@ struct SettingsView: View {
             ftpUser = app.settings.ftpUsername
             ftpPassword = app.settings.ftpPassword
             ftpPort = String(app.settings.ftpPort)
+        }
+    }
+
+    /// Text plus glyph, so the state reads without colour.
+    @ViewBuilder private var cloudStatus: some View {
+        switch app.cloudReachable {
+        case true?: Label("Reachable", systemImage: "checkmark.circle.fill").foregroundStyle(TetherColor.ok)
+        case false?: Label("Unreachable", systemImage: "xmark.circle.fill").foregroundStyle(TetherColor.danger)
+        case nil: Text("Checking…").foregroundStyle(TetherColor.ink1)
         }
     }
 }

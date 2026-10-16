@@ -1,6 +1,8 @@
 import SwiftUI
 import TetherCore
 
+/// Disconnect is a dim and a sheet, never an alert: a danger pill, the
+/// reconnect strategy in one sentence, and one button.
 struct ReconnectView: View {
     @Environment(AppModel.self) private var app
     var model: ShootViewModel
@@ -8,52 +10,72 @@ struct ReconnectView: View {
 
     var body: some View {
         let strategy = model.reconnectStrategy
-        NavigationStack {
-            VStack(spacing: 18) {
-                Image(systemName: icon(strategy)).font(.system(size: 44)).foregroundStyle(Theme.accent).padding(.top, 20)
-                Text(strategy.title).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-                Text(strategy.detail).font(.subheadline).foregroundStyle(Theme.textSecondary).multilineTextAlignment(.center)
-                if model.isReconnecting { ProgressView().padding(.top, 4) }
-                if let error = model.reconnectError { Text(error).font(.footnote).foregroundStyle(Theme.danger).multilineTextAlignment(.center) }
+        VStack(alignment: .leading, spacing: TetherSpace.l) {
+            HStack {
+                TonePill(text: "Connection lost", tone: .danger, systemImage: "bolt.slash.fill")
                 Spacer()
-                buttons(strategy)
+                if model.isReconnecting {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel("Reconnecting")
+                }
             }
-            .padding(20)
-            .background(Theme.background)
-            .navigationTitle("Connection lost")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Later") { model.cancelReconnect(); dismiss() } } }
+            Text(strategy.title)
+                .font(TetherFont.title)
+                .foregroundStyle(TetherColor.ink0)
+            Text(sentence(strategy))
+                .font(TetherFont.callout)
+                .foregroundStyle(TetherColor.ink1)
+                .fixedSize(horizontal: false, vertical: true)
+            if let error = model.reconnectError {
+                Text(error)
+                    .font(TetherFont.hud)
+                    .foregroundStyle(TetherColor.danger)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+            button(strategy)
         }
-        .presentationDetents([.medium])
+        .padding(TetherSpace.xl)
+        .background(TetherColor.surface1)
+        .forceDark()
+        .presentationDetents([.fraction(0.42)])
+        .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(model.isReconnecting)
         .onAppear { if case .waitForUSBDevice = strategy { model.reconnect() } }
     }
 
-    @ViewBuilder private func buttons(_ strategy: ReconnectStrategy) -> some View {
+    /// One sentence that says what to do next.
+    private func sentence(_ strategy: ReconnectStrategy) -> String {
+        let detail = strategy.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let first = detail.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: true).first {
+            return String(first).trimmingCharacters(in: .whitespaces) + "."
+        }
+        return detail
+    }
+
+    @ViewBuilder private func button(_ strategy: ReconnectStrategy) -> some View {
         switch strategy {
         case .nothingToDo:
-            Button("Continue") { dismiss() }.buttonStyle(.borderedProminent).controlSize(.large)
+            primary("Continue") { dismiss() }
         case .startFresh:
-            Button("Go to Connect") {
+            primary("Go to Connect") {
                 dismiss()
                 Task { await app.endShoot(); app.selectedTab = .shoot }
-            }.buttonStyle(.borderedProminent).controlSize(.large)
-        default:
-            Button(model.isReconnecting ? "Reconnecting…" : "Reconnect now") { model.reconnect() }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.isReconnecting)
-            Button("End session", role: .destructive) {
-                dismiss()
-                Task { await app.endShoot() }
             }
+        default:
+            primary(model.isReconnecting ? "Reconnecting…" : "Reconnect now") { model.reconnect() }
+                .disabled(model.isReconnecting)
         }
     }
 
-    private func icon(_ s: ReconnectStrategy) -> String {
-        switch s {
-        case .waitForUSBDevice: return "cable.connector"
-        case .retryHost, .retryRicoh: return "wifi.exclamationmark"
-        case .nothingToDo: return "antenna.radiowaves.left.and.right"
-        case .startFresh: return "questionmark.circle"
+    private func primary(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(TetherFont.headline)
+                .frame(maxWidth: .infinity, minHeight: TetherHit.min + 8)
         }
+        .buttonStyle(.borderedProminent)
+        .tint(TetherColor.accent)
+        .contentTransition(.numericText())
     }
 }

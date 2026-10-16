@@ -22,7 +22,7 @@ struct RootView: View {
                 OnboardingView()
             }
         }
-        .background(Theme.background)
+        .background(TetherColor.surface1)
         .toast($app.toast)
     }
 

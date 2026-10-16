@@ -1,28 +1,31 @@
 import Foundation
+import SwiftUI
 
+/// One full-bleed page: a title, one line, and a generated gradient placeholder.
 struct OnboardingPage: Identifiable {
     var id: Int
     var title: String
     var symbol: String
-    var lines: [String]
+    var line: String
+    /// Hue pair for the placeholder imagery (no asset catalog on this pass).
+    var gradient: [Color]
+    var asksPermissions = false
 }
 
 enum OnboardingContent {
     static let pages: [OnboardingPage] = [
-        OnboardingPage(id: 0, title: "Shoot tethered, review live", symbol: "camera.aperture", lines: [
-            "Plug a camera into the phone with USB-C, or join its Wi-Fi, or let it push files over FTP.",
-            "Every frame lands on the canvas as it is taken; rate, flag, compare and hand the phone to the client.",
-            "Apply looks without touching originals, then export to Photos, Files, FTP or a cloud batch.",
-        ]),
-        OnboardingPage(id: 1, title: "What Tether never does", symbol: "hand.raised", lines: [
-            "It never joins a Wi-Fi network for you. You choose the camera's network in Settings.",
-            "It never uploads a photo without asking. Cloud exports and AI colour match show their cost first.",
-            "It never reads your photo library; saving is add-only. Location is used only to read the Wi-Fi name.",
-        ]),
-        OnboardingPage(id: 2, title: "Permissions", symbol: "lock.shield", lines: [
-            "Local network: to find cameras and receive FTP pushes.",
-            "Photos (add only): to save exports into an album.",
-            "Location (while using): the only way iOS reveals the Wi-Fi network name.",
-        ]),
+        OnboardingPage(id: 0, title: "Shoot tethered, review live", symbol: "camera.aperture",
+                       line: "Every frame lands on the phone as it is taken.",
+                       gradient: [Color(red: 0.13, green: 0.11, blue: 0.10), Color(red: 0.55, green: 0.22, blue: 0.08)]),
+        OnboardingPage(id: 1, title: "Nothing happens behind your back", symbol: "hand.raised",
+                       line: "Tether never joins a network, uploads a photo or reads your library without asking.",
+                       gradient: [Color(red: 0.08, green: 0.10, blue: 0.14), Color(red: 0.12, green: 0.30, blue: 0.42)]),
+        OnboardingPage(id: 2, title: "Three permissions, each optional", symbol: "lock.shield",
+                       line: "Local network to find cameras, Photos to save exports, Location only for the Wi-Fi name.",
+                       gradient: [Color(red: 0.10, green: 0.12, blue: 0.10), Color(red: 0.16, green: 0.42, blue: 0.30)],
+                       asksPermissions: true),
     ]
+
+    /// Index maths for the paged progress indicator.
+    static func isLast(_ page: Int) -> Bool { page >= pages.count - 1 }
 }

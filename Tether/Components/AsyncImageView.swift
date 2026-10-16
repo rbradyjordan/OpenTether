@@ -25,6 +25,7 @@ final class ImageMemoryCache: @unchecked Sendable {
 }
 
 /// Loads a capture file (thumbnail / proxy / original) from the cache proxy.
+/// Fades in on load; the placeholder shimmers unless Reduce Motion is on.
 struct AsyncImageView: View {
     let cache: CaptureCacheProxy
     var relativePath: String?
@@ -34,6 +35,8 @@ struct AsyncImageView: View {
 
     @State private var image: UIImage?
     @State private var failed = false
+    @State private var fromMemory = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -41,13 +44,16 @@ struct AsyncImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: contentMode)
+                    .transition(fromMemory ? .identity : .opacity)
             } else if failed || relativePath == nil {
-                Rectangle().fill(Theme.surfaceRaised)
-                    .overlay(Image(systemName: "photo").foregroundStyle(Theme.textSecondary))
+                Rectangle().fill(TetherColor.surface3)
+                    .overlay(Image(systemName: "photo").foregroundStyle(TetherColor.ink2))
+                    .accessibilityLabel(failed ? "Image unavailable" : "No image")
             } else {
-                Rectangle().fill(Theme.surface)
+                ShimmerPlaceholder()
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.22), value: image == nil)
         .task(id: cacheKey) { await load() }
     }
 
@@ -55,7 +61,12 @@ struct AsyncImageView: View {
 
     private func load() async {
         guard let relativePath else { return }
-        if let hit = ImageMemoryCache.shared.image(for: cacheKey) { image = hit; return }
+        if let hit = ImageMemoryCache.shared.image(for: cacheKey) {
+            fromMemory = true
+            image = hit
+            return
+        }
+        fromMemory = false
         let path = relativePath
         let maxPx = maxPixelSize
         let proxy = cache
@@ -68,6 +79,31 @@ struct AsyncImageView: View {
             image = decoded
         } else {
             failed = true
+        }
+    }
+}
+
+/// Surface-coloured block with a slow highlight sweep. Static under Reduce Motion.
+struct ShimmerPlaceholder: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if reduceMotion {
+            Rectangle().fill(TetherColor.surface2)
+        } else {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
+                Rectangle()
+                    .fill(TetherColor.surface2)
+                    .overlay(
+                        LinearGradient(
+                            colors: [.clear, TetherColor.surface3.opacity(0.9), .clear],
+                            startPoint: UnitPoint(x: t * 2 - 1, y: 0.5),
+                            endPoint: UnitPoint(x: t * 2, y: 0.5)
+                        )
+                    )
+            }
+            .accessibilityHidden(true)
         }
     }
 }

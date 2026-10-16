@@ -25,7 +25,7 @@ enum AppRoute: Hashable {
 
 /// Sheets presented from the shoot screen.
 enum ShootSheet: Identifiable {
-    case looks, colorMatch, export, exportProgress, compare, property(TetherProperty), reconnect, newSession
+    case looks, colorMatch, export, exportProgress, compare, property(TetherProperty), reconnect, newSession, diagnostics
     var id: String {
         switch self {
         case .looks: return "looks"
@@ -36,6 +36,7 @@ enum ShootSheet: Identifiable {
         case .property(let p): return "property-\(p.rawValue)"
         case .reconnect: return "reconnect"
         case .newSession: return "newSession"
+        case .diagnostics: return "diagnostics"
         }
     }
 }

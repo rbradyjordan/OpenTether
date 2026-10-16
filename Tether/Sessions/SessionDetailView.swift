@@ -42,7 +42,8 @@ struct SessionDetailView: View {
                                 }
                                 .padding(4)
                             }
-                            .cornerRadius(6)
+                            .clipShape(RoundedRectangle(cornerRadius: TetherRadius.chip, style: .continuous))
+                            .opacity(item.flag == .reject ? 0.4 : 1)
                             .onTapGesture { selectedID = item.id; showLoupe = true }
                             .accessibilityLabel("\(item.filename), \(item.rating) stars")
                             .accessibilityAddTraits(.isButton)
@@ -78,7 +79,7 @@ struct SessionDetailView: View {
                 ExportSheet(sessionID: session.id, items: items, selectedID: selectedID, look: LookStack(lookID: session.lookID, strength: session.lookStrength))
             }
         }
-        .fullScreenCover(isPresented: $showLoupe) { StoredLoupeView(items: items.filter { $0.state.isReady }, selectedID: $selectedID) }
+        .fullScreenCover(isPresented: $showLoupe) { StoredLoupeView(items: items.filter { $0.state.isReady }, selectedID: $selectedID).forceDark() }
         .onAppear(perform: load)
     }
 
@@ -116,8 +117,8 @@ struct StoredLoupeView: View {
                 Spacer()
                 if let item = items.first(where: { $0.id == selectedID }) {
                     VStack(spacing: 2) {
-                        Text(item.filename).font(.subheadline.weight(.semibold))
-                        if let line = item.exposure?.line, !line.isEmpty { Text(line).font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary) }
+                        Text(item.filename).font(TetherFont.hud).foregroundStyle(TetherColor.ink0)
+                        if let line = item.exposure?.line, !line.isEmpty { Text(line).font(TetherFont.hud).foregroundStyle(TetherColor.ink1) }
                     }
                     .padding(12).background(.black.opacity(0.6))
                 }

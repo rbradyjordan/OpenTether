@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Display-type title, one line of guidance, at most one action.
 struct EmptyState: View {
     var systemImage: String
     var title: String
@@ -8,18 +9,32 @@ struct EmptyState: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: TetherSpace.m) {
             Image(systemName: systemImage)
-                .font(.system(size: 40))
-                .foregroundStyle(Theme.textSecondary)
-            Text(title).font(.title3.weight(.semibold)).multilineTextAlignment(.center)
-            Text(message).font(.subheadline).foregroundStyle(Theme.textSecondary).multilineTextAlignment(.center)
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(TetherColor.ink2)
+                .padding(.bottom, TetherSpace.xs)
+            Text(title)
+                .font(TetherFont.display)
+                .foregroundStyle(TetherColor.ink0)
+                .multilineTextAlignment(.center)
+            if !message.isEmpty {
+                Text(message)
+                    .font(TetherFont.callout)
+                    .foregroundStyle(TetherColor.ink1)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
             if let actionTitle, let action {
-                Button(actionTitle, action: action).buttonStyle(.borderedProminent).tint(Theme.accent).padding(.top, 4)
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .tint(TetherColor.accent)
+                    .controlSize(.large)
+                    .padding(.top, TetherSpace.s)
             }
         }
-        .padding(24)
+        .padding(TetherSpace.xl)
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 }

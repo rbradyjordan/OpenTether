@@ -6,24 +6,24 @@ struct LiveViewView: View {
 
     var body: some View {
         ZStack {
-            Theme.background
+            TetherColor.surface0
             if let image {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
-                VStack(spacing: 8) {
-                    ProgressView()
-                    Text("Waiting for live view…").font(.footnote).foregroundStyle(Theme.textSecondary)
+                VStack(spacing: TetherSpace.s) {
+                    ProgressView().tint(TetherColor.ink1)
+                    Text("Waiting for live view…").font(TetherFont.callout).foregroundStyle(TetherColor.ink1)
                 }
             }
             VStack {
                 HStack {
-                    Text("LIVE").font(.caption2.weight(.heavy)).padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Theme.danger, in: Capsule())
+                    TonePill(text: "LIVE", tone: .danger, systemImage: "circle.fill")
                     Spacer()
                 }
-                .padding(10)
+                .padding(TetherSpace.m)
                 Spacer()
             }
+            .overlayTypeCap()
         }
         .accessibilityLabel("Live view from the camera")
     }
