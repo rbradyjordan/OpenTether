@@ -223,11 +223,14 @@ final class AppModel {
     func didEnterBackground() {
         // We keep the session object alive; iOS will suspend sockets. On return
         // the transport reports closed and the reconnect sheet appears.
-        beginBackgroundTask()
+        beginBackgroundTaskIfBusy()
     }
 
     func didBecomeActive() {
         endBackgroundTaskIfIdle()
+        // Exports paused when background time ran out pick up where they stopped.
+        let queue = exportQueue
+        Task { await queue.resume() }
         shoot?.checkTransportAfterForeground()
     }
 
@@ -237,8 +240,20 @@ final class AppModel {
     private func beginBackgroundTask() {
         guard backgroundTaskID == .invalid else { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "tether.exports") { [weak self] in
-            Task { @MainActor in self?.endBackgroundTask() }
+            // Time is up: pause exports (they resume from the store later) and
+            // end the task right here; iOS kills apps that end it late.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let queue = self.exportQueue
+                Task { await queue.pause() }
+                self.endBackgroundTask()
+            }
         }
+    }
+
+    /// Only ask iOS for background time when an export is actually running.
+    private func beginBackgroundTaskIfBusy() {
+        if exportJobs.contains(where: { $0.status.key == "running" }) { beginBackgroundTask() }
     }
 
     private func endBackgroundTaskIfIdle() {
