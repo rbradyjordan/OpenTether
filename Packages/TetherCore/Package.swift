@@ -19,10 +19,19 @@ let package = Package(
             pkgConfig: "sqlite3",
             providers: [.apt(["libsqlite3-dev"]), .brew(["sqlite"])]
         ),
+        .systemLibrary(
+            name: "CCurl",
+            path: "Sources/CCurl",
+            pkgConfig: "libcurl",
+            providers: [.apt(["libcurl4-openssl-dev"]), .brew(["curl"])]
+        ),
         .target(
             name: "TetherCore",
             dependencies: [
                 .target(name: "CSQLite", condition: .when(platforms: [.linux])),
+                // libcurl FTP/FTPS client: Linux only here. Apple platforms use
+                // StreamFTPClient; iOS would need a prebuilt libcurl xcframework.
+                .target(name: "CCurl", condition: .when(platforms: [.linux])),
             ],
             path: "Sources/TetherCore"
         ),

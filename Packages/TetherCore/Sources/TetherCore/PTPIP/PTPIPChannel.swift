@@ -74,6 +74,7 @@ public final class SocketChannel: PTPIPChannel, @unchecked Sendable {
                 let w = waiter; waiter = nil
                 lock.unlock()
                 w?.resume(throwing: PTPError.transportClosed)
+                closeDescriptor()
                 return
             }
         }
@@ -115,12 +116,18 @@ public final class SocketChannel: PTPIPChannel, @unchecked Sendable {
         }
     }
 
+    /// Only shuts the socket down; the reader thread owns the descriptor and
+    /// closes it once `recv` returns, so a late `recv` can never read from a
+    /// reused fd number.
     public func close() {
         lock.lock()
         if closed { lock.unlock(); return }
         closed = true
         lock.unlock()
         shutdown(fd, Int32(SHUT_RDWR))
+    }
+
+    private func closeDescriptor() {
         #if canImport(Glibc)
         Glibc.close(fd)
         #else
@@ -144,7 +151,11 @@ public struct SocketConnector: PTPIPConnector {
     /// Resolves and connects with a timeout (non-blocking connect + poll).
     public static func blockingConnect(host: String, port: UInt16, timeout: TimeInterval) throws -> Int32 {
         var hints = addrinfo()
+        #if canImport(Glibc)
         hints.ai_socktype = Int32(SOCK_STREAM.rawValue)
+        #else
+        hints.ai_socktype = SOCK_STREAM
+        #endif
         hints.ai_family = AF_UNSPEC
         var res: UnsafeMutablePointer<addrinfo>?
         guard getaddrinfo(host, String(port), &hints, &res) == 0, let first = res else {

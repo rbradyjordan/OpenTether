@@ -74,7 +74,11 @@ final class FakePTPIPCamera: @unchecked Sendable {
     let objectPayload = Data.fakeJPEG(size: 300_000)
 
     init() throws {
+        #if canImport(Glibc)
         let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        #else
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         listenFD = fd
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
