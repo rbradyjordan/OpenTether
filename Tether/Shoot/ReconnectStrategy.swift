@@ -56,11 +56,11 @@ enum ReconnectStrategy: Equatable, Sendable {
 
     var detail: String {
         switch self {
-        case .waitForUSBDevice: return "Plug the camera back in. Tether reconnects as soon as it reappears and keeps every frame from this session."
+        case .waitForUSBDevice: return "Plug the camera back in. Open Tether reconnects as soon as it reappears and keeps every frame from this session."
         case .retryHost: return "Make sure the phone is still on the camera's Wi-Fi and the camera is in its PC / remote connection mode."
         case .retryRicoh: return "Stay on the camera's Wi-Fi network. The GR sleeps quickly; half-press the shutter to wake it."
         case .nothingToDo: return "Cameras push files whenever they want; the session keeps collecting them."
-        case .startFresh: return "Tether does not know how this session was connected. Pick a connection method to continue it."
+        case .startFresh: return "Open Tether does not know how this session was connected. Pick a connection method to continue it."
         }
     }
 }

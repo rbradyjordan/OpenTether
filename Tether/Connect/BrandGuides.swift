@@ -28,20 +28,20 @@ struct BrandGuide: Identifiable {
                    wireless: [
                        Step(text: "Menu → Wireless settings → Wi-Fi/Bluetooth connection → Connect to EOS Utility.", symbol: "antenna.radiowaves.left.and.right"),
                        Step(text: "Pick 'Camera access point mode' and note the network name and password.", symbol: "key"),
-                       Step(text: "On the phone: Settings → Wi-Fi → join that network. Come back to Tether and tap the camera.", symbol: "wifi"),
+                       Step(text: "On the phone: Settings → Wi-Fi → join that network. Come back to Open Tether and tap the camera.", symbol: "wifi"),
                    ],
-                   notes: ["Tether puts the body into remote-control mode and releases it when the session ends.",
+                   notes: ["Open Tether puts the body into remote-control mode and releases it when the session ends.",
                            "Captures can go to the card, the phone only, or both (Destination in the exposure bar)."]),
         BrandGuide(vendor: .nikon,
                    summary: "Z bodies need USB power delivery off and the USB connection set to PC; Wi-Fi uses the camera's own access point.",
                    wired: [
                        Step(text: "Setup menu → USB power delivery → OFF (otherwise the camera charges and never talks).", symbol: "battery.100.bolt"),
                        Step(text: "Setup menu → USB connection → PC (not Mass Storage / MTP).", symbol: "laptopcomputer"),
-                       Step(text: "Connect the cable. Tether switches the body to application mode (ChangeApplicationMode) and back afterwards.", symbol: "cable.connector"),
+                       Step(text: "Connect the cable. Open Tether switches the body to application mode (ChangeApplicationMode) and back afterwards.", symbol: "cable.connector"),
                    ],
                    wireless: [
                        Step(text: "Setup menu → Connect to smart device / Connect to PC → Wi-Fi connection → Camera access point.", symbol: "antenna.radiowaves.left.and.right"),
-                       Step(text: "Join the camera network in Settings → Wi-Fi, then return to Tether.", symbol: "wifi"),
+                       Step(text: "Join the camera network in Settings → Wi-Fi, then return to Open Tether.", symbol: "wifi"),
                    ],
                    notes: ["Some Z bodies need the first connection pairing to be confirmed on the camera screen."]),
         BrandGuide(vendor: .sony,
@@ -53,7 +53,7 @@ struct BrandGuide: Identifiable {
                    ],
                    wireless: [
                        Step(text: "Menu → Network → Wi-Fi → Wi-Fi Connect ON, then PC Remote Function → Connection method: Access point / Wi-Fi Direct.", symbol: "antenna.radiowaves.left.and.right"),
-                       Step(text: "Join the DIRECT-xxxx network in Settings → Wi-Fi. Return to Tether.", symbol: "wifi"),
+                       Step(text: "Join the DIRECT-xxxx network in Settings → Wi-Fi. Return to Open Tether.", symbol: "wifi"),
                    ],
                    notes: ["Close Imaging Edge / Capture One before connecting: Sony allows a single remote session.",
                            "Turn Smartphone Connect off; it blocks PC Remote on many bodies."]),
@@ -65,7 +65,7 @@ struct BrandGuide: Identifiable {
                    ],
                    wireless: [
                        Step(text: "Setup → Connection Setting → Connection Mode → Wireless Tether Shooting Fixed / PC Connection Mode.", symbol: "antenna.radiowaves.left.and.right"),
-                       Step(text: "Join the FUJIFILM-xxxx network. Tether listens; the camera connects to the phone.", symbol: "wifi"),
+                       Step(text: "Join the FUJIFILM-xxxx network. Open Tether listens; the camera connects to the phone.", symbol: "wifi"),
                    ],
                    notes: ["Fujifilm pushes events slowly; the filmstrip may lag the shutter by a second."]),
         BrandGuide(vendor: .ricoh,
@@ -74,7 +74,7 @@ struct BrandGuide: Identifiable {
                    wireless: [
                        Step(text: "GR III: Menu → Wireless settings → Wi-Fi → ON (or hold the Wi-Fi button). Note the password printed on the camera's sticker / menu.", symbol: "antenna.radiowaves.left.and.right"),
                        Step(text: "Join GR_xxxxxx in Settings → Wi-Fi. The camera is always 192.168.0.1.", symbol: "wifi"),
-                       Step(text: "Back in Tether the Ricoh shows up automatically; tap Connect.", symbol: "camera"),
+                       Step(text: "Back in Open Tether the Ricoh shows up automatically; tap Connect.", symbol: "camera"),
                    ],
                    notes: ["The GR sleeps fast; half-press the shutter to wake it before connecting.",
                            "RAW (DNG) captures download the camera's JPEG proxy first for speed."]),

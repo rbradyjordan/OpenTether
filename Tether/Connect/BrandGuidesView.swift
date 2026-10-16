@@ -19,7 +19,7 @@ struct BrandGuidesView: View {
                     }
                 }
             } footer: {
-                Text("Any other PTP camera imports over USB: Tether watches for new files and downloads them, without remote capture.")
+                Text("Any other PTP camera imports over USB: Open Tether watches for new files and downloads them, without remote capture.")
             }
         }
         .scrollContentBackground(.hidden)

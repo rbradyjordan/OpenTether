@@ -20,7 +20,7 @@ struct SettingsView: View {
                 LabeledContent("Device", value: String(app.settings.deviceID.prefix(8)))
                 NavigationLink("Credits", value: AppRoute.credits)
                 Button("Apply URL and reconnect") { app.applyCloudBaseURL(cloudURL) }
-            } header: { Text("Tether cloud") } footer: {
+            } header: { Text("Open Tether cloud") } footer: {
                 Text("Default for development is \(AppSettings.defaultCloudBaseURL). Exports already queued keep using the URL from launch.")
             }
 
@@ -51,7 +51,7 @@ struct SettingsView: View {
 
             Section("About") {
                 NavigationLink("Privacy & legal", value: AppRoute.privacy)
-                NavigationLink("About Tether", value: AppRoute.about)
+                NavigationLink("About Open Tether", value: AppRoute.about)
                 Button("Replay onboarding") { app.settings.hasOnboarded = false }
             }
         }

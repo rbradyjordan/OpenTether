@@ -11,7 +11,7 @@ struct AboutView: View {
         ScrollView {
             VStack(spacing: 16) {
                 Image(systemName: "camera.aperture").font(.system(size: 56)).foregroundStyle(Theme.accent).padding(.top, 30)
-                Text("Tether").font(.largeTitle.weight(.bold))
+                Text("Open Tether").font(.largeTitle.weight(.bold))
                 Text("Version \(version)").foregroundStyle(Theme.textSecondary)
                 Text("Camera tethering for iPhone and iPad: USB-C, Wi-Fi and FTP push, with looks, client review and resumable exports.")
                     .multilineTextAlignment(.center).font(.subheadline).padding(.horizontal)

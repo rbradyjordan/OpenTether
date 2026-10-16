@@ -16,7 +16,7 @@ struct RegularRootView: View {
         @Bindable var app = app
         NavigationSplitView(columnVisibility: $columns) {
             LibrarySidebar(mode: .regular, selected: $sidebarItem)
-                .navigationTitle("Tether")
+                .navigationTitle("Open Tether")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }

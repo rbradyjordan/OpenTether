@@ -18,7 +18,7 @@ enum OnboardingContent {
                        line: "Every frame lands on the phone as it is taken.",
                        gradient: [Color(red: 0.13, green: 0.11, blue: 0.10), Color(red: 0.55, green: 0.22, blue: 0.08)]),
         OnboardingPage(id: 1, title: "Nothing happens behind your back", symbol: "hand.raised",
-                       line: "Tether never joins a network, uploads a photo or reads your library without asking.",
+                       line: "Open Tether never joins a network, uploads a photo or reads your library without asking.",
                        gradient: [Color(red: 0.08, green: 0.10, blue: 0.14), Color(red: 0.12, green: 0.30, blue: 0.42)]),
         OnboardingPage(id: 2, title: "Three permissions, each optional", symbol: "lock.shield",
                        line: "Local network to find cameras, Photos to save exports, Location only for the Wi-Fi name.",

@@ -33,7 +33,7 @@ final class FilesExportSink: ExportSink, @unchecked Sendable {
     }
 
     private func sessionFolderName(for item: ExportJob.Item) -> String {
-        guard let capture = try? store.capture(item.id), let session = try? store.session(capture.sessionID) else { return "Tether" }
+        guard let capture = try? store.capture(item.id), let session = try? store.session(capture.sessionID) else { return "Open Tether" }
         let cleaned = session.name.components(separatedBy: CharacterSet(charactersIn: "/\\:\0")).joined(separator: "-")
         return cleaned.isEmpty ? session.directoryName : cleaned
     }

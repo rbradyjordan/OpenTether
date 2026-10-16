@@ -77,7 +77,7 @@ struct WiFiConnectView: View {
                         .font(.subheadline).foregroundStyle(Theme.warning)
                 }
             } else if model.ssidAuthorization == .denied {
-                Text("Location access is off, so the network name is hidden. Tether only uses it to recognise camera networks.")
+                Text("Location access is off, so the network name is hidden. Open Tether only uses it to recognise camera networks.")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
             } else {
                 Text("Network name unavailable").font(.subheadline).foregroundStyle(Theme.textSecondary)
@@ -85,7 +85,7 @@ struct WiFiConnectView: View {
                     Button("Allow reading the network name") { model.requestSSIDAccess() }.buttonStyle(.bordered).controlSize(.small)
                 }
             }
-            Text("Tether never joins a Wi-Fi network for you.").font(.caption).foregroundStyle(Theme.textSecondary)
+            Text("Open Tether never joins a Wi-Fi network for you.").font(.caption).foregroundStyle(Theme.textSecondary)
             Button {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
             } label: {

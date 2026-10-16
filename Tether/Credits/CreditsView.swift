@@ -16,7 +16,7 @@ struct CreditsView: View {
                 howItWorks(credits)
                 packs
                 if app.cloudReachable == false {
-                    Label("The Tether cloud is unreachable; balances shown are the last known values.", systemImage: "exclamationmark.triangle.fill")
+                    Label("The Open Tether cloud is unreachable; balances shown are the last known values.", systemImage: "exclamationmark.triangle.fill")
                         .font(TetherFont.hud).foregroundStyle(TetherColor.warn)
                 }
             }

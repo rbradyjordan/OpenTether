@@ -39,26 +39,28 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Tether/Tether.entitlements
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     info:
       path: Tether/Info.plist
       properties:
-        CFBundleDisplayName: Tether
+        CFBundleDisplayName: Open Tether
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        NSCameraUsageDescription: "Tether uses this to control your connected camera for tethering."
-        NSLocalNetworkUsageDescription: "Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you."
+        NSCameraUsageDescription: "Open Tether uses this to control your connected camera for tethering."
+        NSLocalNetworkUsageDescription: "Open Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you."
         NSBonjourServices:
           - _ptp._tcp
           - _lnp._tcp
           - _bonjour._tcp
-        NSPhotoLibraryAddUsageDescription: "Tether saves the photos you choose to export into an album named after your session."
-        NSPhotoLibraryUsageDescription: "Tether saves exported photos into your library and checks that the save completed."
-        NSLocationWhenInUseUsageDescription: "Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere."
+        NSPhotoLibraryAddUsageDescription: "Open Tether saves the photos you choose to export into an album named after your session."
+        NSPhotoLibraryUsageDescription: "Open Tether saves exported photos into your library and checks that the save completed."
+        NSLocationWhenInUseUsageDescription: "Open Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere."
         UIBackgroundModes:
           - fetch
           - processing

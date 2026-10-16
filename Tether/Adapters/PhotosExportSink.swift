@@ -12,7 +12,7 @@ final class PhotosExportSink: ExportSink, @unchecked Sendable {
         if item.isCompanion { return nil }
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { throw PhotosSinkError.notAuthorized }
-        let albumName = sessionName(for: item) ?? "Tether"
+        let albumName = sessionName(for: item) ?? "Open Tether"
         let album = try await ensureAlbum(named: albumName)
         var localID: String?
         try await PHPhotoLibrary.shared().performChanges {
@@ -48,5 +48,5 @@ final class PhotosExportSink: ExportSink, @unchecked Sendable {
 
 enum PhotosSinkError: Error, CustomStringConvertible {
     case notAuthorized
-    var description: String { "Tether is not allowed to add to your photo library. Enable it in Settings → Privacy → Photos." }
+    var description: String { "Open Tether is not allowed to add to your photo library. Enable it in Settings → Privacy → Photos." }
 }

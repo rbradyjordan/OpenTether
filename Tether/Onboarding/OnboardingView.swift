@@ -69,7 +69,7 @@ struct OnboardingView: View {
                     ssidState = await app.services.ssid.authorizationState
                 }
             }
-            Text("Skip any of these; Tether asks again when a feature needs it.")
+            Text("Skip any of these; Open Tether asks again when a feature needs it.")
                 .font(TetherFont.hud).foregroundStyle(TetherColor.ink2)
         }
     }

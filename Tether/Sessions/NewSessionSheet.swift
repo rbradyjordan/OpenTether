@@ -63,7 +63,7 @@ struct NewSessionSheet: View {
 
     private var destinationHelp: String {
         switch destination {
-        case .card: return "Frames stay on the card. Tether still lists them when the camera announces them but downloads nothing; good for speed on slow links."
+        case .card: return "Frames stay on the card. Open Tether still lists them when the camera announces them but downloads nothing; good for speed on slow links."
         case .host: return "Frames go straight to the phone and are not written to the card. Fast, but a crash before download loses the frame."
         case .both: return "The camera writes the card and sends a copy. Safest choice."
         }
