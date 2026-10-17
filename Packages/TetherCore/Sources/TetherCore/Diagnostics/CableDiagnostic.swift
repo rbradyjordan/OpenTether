@@ -131,9 +131,9 @@ public enum WiredDiagnostics {
     public static func checks(_ p: Probes) -> [DiagnosticCheck] {
         [
             DiagnosticCheck(id: "bus", title: "Camera on the cable",
-                            tip: "Use a data-capable USB-C cable (not charge-only). Some cameras need their USB mode set to PC Remote / PTP before they appear. Try the camera's other port if it has two, and skip hubs.") {
+                            tip: "If your camera doesn't appear, try disconnecting and reconnecting the USB-C cable. Use a data-capable cable (not charge-only). Some cameras need their USB mode set to PC Remote / PTP before they appear. Try the camera's other port if it has two, and skip hubs.") {
                 if let d = await p.deviceOnBus() { return .pass("\(d.name) (\(d.vendorGuess.displayName), USB \(USBIDs.hex(d.usbVendorID)):\(USBIDs.hex(d.usbProductID)))") }
-                return .fail("No camera is visible on USB. Check the cable, the camera's USB connection mode, and that the camera is on.")
+                return .fail("No camera is visible on USB. Try disconnecting and reconnecting the USB-C cable, then check the cable, the camera's USB connection mode, and that the camera is on.")
             },
             DiagnosticCheck(id: "auth", title: "Permissions",
                             tip: "Tether needs both Camera Control and Contents access to send PTP commands (Settings → Privacy & Security).") {

@@ -58,6 +58,8 @@ struct USBConnectView: View {
                     HStack { ProgressView().controlSize(.small); Text("Looking for a camera…").font(.subheadline) }
                     Text("Switch the camera on with a memory card inserted (iOS ignores cameras with no card), turn its Wi-Fi and Bluetooth off, and use a data-capable USB-C cable straight into the phone.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
+                    Label("If your camera doesn't appear, try disconnecting and reconnecting the USB-C cable.", systemImage: "cable.connector")
+                        .font(.footnote.weight(.medium)).foregroundStyle(TetherColor.ink0)
                     Text(model.statusLine).font(TetherFont.hud).foregroundStyle(TetherColor.ink2).textSelection(.enabled)
                 }
             } else {

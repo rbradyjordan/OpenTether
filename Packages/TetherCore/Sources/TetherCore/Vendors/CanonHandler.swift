@@ -364,6 +364,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     private(set) var available: [UInt32: [UInt32]] = [:]
     private var pending: [CameraEvent] = []
     private var destination: CaptureDestination = .card
+    private var afResultSeen = false
     private var liveViewOn = false
     /// AF coordinate space from FocusInfoEx, once the body has sent it.
     private(set) var afCoordinateSpace: (width: Int, height: Int)?
@@ -557,7 +558,9 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
                 out.append(.warning("The camera is about to power off."))
             case CanonCodes.Event.storeAdded, CanonCodes.Event.storeRemoved, CanonCodes.Event.storageInfoChanged, CanonCodes.Event.storageStatusChanged:
                 out.append(.storageChanged)
-            case CanonCodes.Event.bulbExposureTime, CanonCodes.Event.recordingTime, CanonCodes.Event.afResult,
+            case CanonCodes.Event.afResult:
+                afResultSeen = true
+            case CanonCodes.Event.bulbExposureTime, CanonCodes.Event.recordingTime,
                  CanonCodes.Event.shutdownTimerUpdated, CanonCodes.Event.requestGetEvent:
                 continue
             default:
@@ -782,9 +785,23 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         let x = UInt32(max(0, min(1, nx)) * Double(space.width - 1))
         let y = UInt32(max(0, min(1, ny)) * Double(space.height - 1))
         try await engine.run(CanonCodes.Op.touchAfPosition, [CanonCodes.touchAfType, x, y])
-        if info.supports(CanonCodes.Op.doAf) { try await engine.run(CanonCodes.Op.doAf, timeout: 10) }
-        if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
+        guard info.supports(CanonCodes.Op.doAf) else { return }
+        afResultSeen = false
+        try await engine.run(CanonCodes.Op.doAf, timeout: 10)
+        // Servo AF keeps driving the lens until told to stop: wait for the
+        // AF result (or a short limit), then cancel. The lens stays put.
+        let started = Date()
+        while !afResultSeen, Date().timeIntervalSince(started) < Self.touchAfSettle {
+            if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
+            if !afResultSeen { try? await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        if info.supports(CanonCodes.Op.afCancel) {
+            _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
+        }
     }
+
+    /// Longest wait for an AF result before touch AF is cancelled.
+    static let touchAfSettle: TimeInterval = 1.5
 
     /// Without a first frame by then, the body is not going to send one.
     static let liveViewStartTimeout: TimeInterval = 8
