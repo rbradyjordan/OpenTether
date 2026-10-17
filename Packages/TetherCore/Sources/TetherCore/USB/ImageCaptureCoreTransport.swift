@@ -2,6 +2,10 @@ import Foundation
 
 #if canImport(ImageCaptureCore)
 import ImageCaptureCore
+import os
+
+/// Console trail for the USB path (filter Xcode's console on "[USB]").
+let usbLog = Logger(subsystem: "com.bradyjordan.tether", category: "usb")
 
 /// The one sanctioned USB door on iOS: ImageCaptureCore. Discovers cameras
 /// with `ICDeviceBrowser`, requests BOTH control and contents authorization
@@ -41,9 +45,14 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     public func start() {
         Task { @MainActor in
             let before = self.currentAuthorization()
+            usbLog.notice("[USB] start; access before: contents=\(before.contents.rawValue, privacy: .public) control=\(before.control.rawValue, privacy: .public)")
             let after = await self.requestAuthorizations()
+            usbLog.notice("[USB] access after: contents=\(after.contents.rawValue, privacy: .public) control=\(after.control.rawValue, privacy: .public)")
             if after.canSendPTP, !before.canSendPTP, self.browser.isBrowsing { self.browser.stop() }
-            if !self.browser.isBrowsing { self.browser.start() }
+            if !self.browser.isBrowsing {
+                self.browser.start()
+                usbLog.notice("[USB] browser started (mask 0x\(String(self.browser.browsedDeviceTypeMask.rawValue, radix: 16), privacy: .public)), browsing=\(self.browser.isBrowsing, privacy: .public)")
+            }
         }
     }
 
@@ -138,19 +147,23 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
                                usbVendorID: Int(d.usbVendorID), usbProductID: Int(d.usbProductID),
                                serialNumber: Self.serialNumber(of: d), hasOpenSession: d.hasOpenSession)
         }.filter { vendorFilter == nil || vendorFilter!.contains($0.vendorGuess) || $0.vendorGuess == .generic }
+        let total = devices.count
         lock.unlock()
+        usbLog.notice("[USB] cameras: \(total, privacy: .public) seen, \(list.count, privacy: .public) listed")
         continuation.yield(.devices(list.sorted { $0.name < $1.name }))
     }
 
     // MARK: ICDeviceBrowserDelegate
 
     public func deviceBrowser(_ browser: ICDeviceBrowser, didAdd device: ICDevice, moreComing: Bool) {
+        usbLog.notice("[USB] didAdd \(device.name ?? "?", privacy: .public) type=\(String(describing: type(of: device)), privacy: .public) transport=\(device.transportType ?? "?", privacy: .public) usb=\(String(format: "%04X:%04X", device.usbVendorID, device.usbProductID), privacy: .public) moreComing=\(moreComing, privacy: .public)")
         guard let cam = device as? ICCameraDevice else { return }
         lock.lock(); devices[cam.uuidString ?? cam.name ?? UUID().uuidString] = cam; lock.unlock()
         if !moreComing { publish() }
     }
 
     public func deviceBrowser(_ browser: ICDeviceBrowser, didRemove device: ICDevice, moreGoing: Bool) {
+        usbLog.notice("[USB] didRemove \(device.name ?? "?", privacy: .public)")
         lock.lock(); devices = devices.filter { $0.value !== device }; lock.unlock()
         if !moreGoing { publish() }
     }
@@ -245,6 +258,7 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
     // MARK: ICCameraDeviceDelegate
 
     public func device(_ device: ICDevice, didOpenSessionWithError error: Error?) {
+        usbLog.notice("[USB] session open on \(device.name ?? "?", privacy: .public): \(error.map { "\($0)" } ?? "ok", privacy: .public)")
         lock.lock()
         let cont = openContinuation
         openContinuation = nil
@@ -295,6 +309,7 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
     public func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {}
     public func device(_ device: ICDevice, didReceiveStatusInformation status: [ICDeviceStatus: Any]) {}
     public func device(_ device: ICDevice, didEncounterError error: Error?) {
+        usbLog.error("[USB] device error on \(device.name ?? "?", privacy: .public): \(error.map { "\($0)" } ?? "nil", privacy: .public)")
         if let error { health.lastError = error.localizedDescription }
     }
     public func cameraDevice(_ camera: ICCameraDevice, didReceiveMetadata metadata: [AnyHashable: Any]?, for item: ICCameraItem, error: Error?) {}

@@ -48,28 +48,32 @@ public final class BonjourDiscoverer: NSObject, CameraDiscovering, NetServiceBro
             return false
         }
         if already { return }
-        let ready = DispatchSemaphore(value: 0)
-        let t = Thread { [weak self] in
-            guard let self else { ready.signal(); return }
-            self.runLoop = RunLoop.current
-            // Keep the loop alive with a port even when no browser is scheduled.
-            RunLoop.current.add(NSMachPort(), forMode: .default)
-            for type in BonjourBrandMapper.serviceTypes {
-                let b = NetServiceBrowser()
-                b.delegate = self
-                b.schedule(in: .current, forMode: .default)
-                b.searchForServices(ofType: type, inDomain: "local.")
-                self.lock.lock(); self.browsers.append(b); self.lock.unlock()
+        // Wait for the browsers to be scheduled without blocking a thread:
+        // a semaphore here was a priority inversion (the caller is
+        // user-initiated, the run-loop thread default).
+        await withCheckedContinuation { (ready: CheckedContinuation<Void, Never>) in
+            let t = Thread { [weak self] in
+                guard let self else { ready.resume(); return }
+                self.runLoop = RunLoop.current
+                // Keep the loop alive with a port even when no browser is scheduled.
+                RunLoop.current.add(NSMachPort(), forMode: .default)
+                for type in BonjourBrandMapper.serviceTypes {
+                    let b = NetServiceBrowser()
+                    b.delegate = self
+                    b.schedule(in: .current, forMode: .default)
+                    b.searchForServices(ofType: type, inDomain: "local.")
+                    self.lock.lock(); self.browsers.append(b); self.lock.unlock()
+                }
+                ready.resume()
+                while self.isRunning {
+                    if !RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.25)) { Thread.sleep(forTimeInterval: 0.05) }
+                }
             }
-            ready.signal()
-            while self.isRunning {
-                if !RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.25)) { Thread.sleep(forTimeInterval: 0.05) }
-            }
+            t.name = "tether.bonjour"
+            t.qualityOfService = .userInitiated
+            lock.withLock { thread = t }
+            t.start()
         }
-        t.name = "tether.bonjour"
-        lock.withLock { thread = t }
-        t.start()
-        ready.wait()
     }
 
     private var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }
