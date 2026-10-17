@@ -30,11 +30,9 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         continuation = c
         super.init()
         browser.delegate = self
-        #if os(macOS)
+        // Type AND location: a mask with only the camera bit matches no
+        // location, so iOS reported nothing on the cable.
         browser.browsedDeviceTypeMask = ICDeviceTypeMask(rawValue: ICDeviceTypeMask.camera.rawValue | ICDeviceLocationTypeMask.local.rawValue)!
-        #else
-        browser.browsedDeviceTypeMask = .camera
-        #endif
     }
 
     /// Reads the saved permissions, asks only for what is still undecided,
@@ -50,6 +48,16 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     }
 
     public func stop() { browser.stop() }
+
+    /// One line for the USB screen: is the browser running, what does iOS say
+    /// about access, and what has it seen on the cable (cameras or not).
+    @MainActor
+    public var statusLine: String {
+        let auth = currentAuthorization()
+        let all = browser.devices ?? []
+        let cams = all.filter { $0 is ICCameraDevice }.count
+        return "Browser \(browser.isBrowsing ? "on" : "off") · contents \(auth.contents.rawValue) · control \(auth.control.rawValue) · \(all.count) device\(all.count == 1 ? "" : "s") (\(cams) camera\(cams == 1 ? "" : "s"))"
+    }
 
     /// What iOS has on record, without prompting.
     @MainActor

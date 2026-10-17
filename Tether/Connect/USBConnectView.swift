@@ -58,6 +58,7 @@ struct USBConnectView: View {
                     HStack { ProgressView().controlSize(.small); Text("Looking for a camera…").font(.subheadline) }
                     Text("Use a data-capable USB-C cable and set the camera's USB mode to PC Remote / PTP. No hubs for the first try.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
+                    Text(model.statusLine).font(TetherFont.hud).foregroundStyle(TetherColor.ink2).textSelection(.enabled)
                 }
             } else {
                 ForEach(model.devices) { device in
