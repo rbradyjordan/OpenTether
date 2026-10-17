@@ -91,7 +91,7 @@ private struct ShootHeader: View {
         HStack(spacing: TetherSpace.s) {
             StatusPill(tone: tone, title: model.cameraName, transportSymbol: transportSymbol,
                        battery: model.batteryText, downloads: model.downloadsInFlight, detail: detail) {
-                model.sheet = .diagnostics
+                if model.isDisconnected || model.status == .reconnecting { model.showReconnect() } else { model.sheet = .diagnostics }
             }
             Spacer(minLength: TetherSpace.xs)
             Button { showEndConfirm = true } label: {
@@ -107,7 +107,7 @@ private struct ShootHeader: View {
                 Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
                 Button { showImporter = true } label: { Label("Import files…", systemImage: "square.and.arrow.down") }
                 if model.isDisconnected {
-                    Button { model.sheet = .reconnect } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
+                    Button { model.showReconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
                 }
                 Divider()
                 Button(role: .destructive) { showEndConfirm = true } label: { Label("End session", systemImage: "stop.circle") }

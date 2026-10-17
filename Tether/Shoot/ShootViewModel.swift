@@ -126,7 +126,7 @@ final class ShootViewModel {
             if case .disconnected(let reason) = s, !isReconnecting, context != .ftp {
                 TetherHaptic.disconnected()
                 toast = ToastMessage(text: reason, systemImage: "bolt.slash")
-                sheet = .reconnect
+                if !reconnectSnoozed { sheet = .reconnect }
             }
         case .capture(let item):
             let previous = items.first { $0.id == item.id }
@@ -327,8 +327,22 @@ final class ShootViewModel {
         Task {
             let snap = await session.snapshot
             status = snap.status
-            if case .disconnected = snap.status, context != .ftp, sheet == nil { sheet = .reconnect }
+            if case .disconnected = snap.status, context != .ftp, sheet == nil, !reconnectSnoozed { sheet = .reconnect }
         }
+    }
+
+    /// Set when the user puts the reconnect sheet away; it then stays away
+    /// (reconnecting carries on) until they ask for it or the link is back.
+    private(set) var reconnectSnoozed = false
+
+    func snoozeReconnect() {
+        guard isDisconnected || status == .reconnecting else { return }
+        reconnectSnoozed = true
+    }
+
+    func showReconnect() {
+        reconnectSnoozed = false
+        sheet = .reconnect
     }
 
     func reconnect() {
@@ -371,6 +385,7 @@ final class ShootViewModel {
                     return
                 }
                 adopt(connection)
+                reconnectSnoozed = false
                 sheet = nil
                 TetherHaptic.connected()
                 toast = ToastMessage(text: "Reconnected to \(cameraName)", systemImage: "checkmark.circle")
