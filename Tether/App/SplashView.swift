@@ -6,6 +6,21 @@ import SwiftUI
 /// Starts on the same black as the launch screen so the hand-off is invisible.
 /// Under Reduce Motion everything simply fades in.
 struct SplashView: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    /// iPhone: a wall of photographs. iPad and Mac: a centred splash card
+    /// in the style of Lightroom and Resolve. (`IconSplash` stays for previews
+    /// and as the fallback look.)
+    static var introDuration: Duration {
+        UIDevice.current.userInterfaceIdiom == .phone ? PhotoWallSplash.introDuration : CardSplash.introDuration
+    }
+
+    var body: some View {
+        if sizeClass == .regular { CardSplash() } else { PhotoWallSplash() }
+    }
+}
+
+struct IconSplash: View {
     @State private var iconIn = false
     @State private var bloom = false
     @State private var sweep: CGFloat = -1
@@ -82,6 +97,4 @@ struct SplashView: View {
     }
 }
 
-#Preview {
-    SplashView()
-}
+#Preview("Icon") { IconSplash() }
