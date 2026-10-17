@@ -393,6 +393,15 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         }
         try await setEOSProperty(CanonCodes.Prop.captureDestination, value)
         destination = d
+        try await reportHostCapacity()
+    }
+
+    /// With captures going to the host, the body needs to hear how much room
+    /// the host has; without it, it assumes none, shows "PC full" and refuses
+    /// to fire (DeviceBusy). libgphoto2 sends the same fixed, large figure.
+    private func reportHostCapacity() async throws {
+        guard destination != .card, info.supports(CanonCodes.Op.pcHDDCapacity) else { return }
+        try await engine.run(CanonCodes.Op.pcHDDCapacity, [0x0FFF_FFFF, 0x0000_1000, 0x0000_0001])
     }
 
     public func capture(autofocus: Bool) async throws {
@@ -403,6 +412,8 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             // Drain queued events first: EOS bodies report busy while their
             // event queue is full (common right after connecting).
             _ = try? await fetchEvents().forEach { pending.append($0) }
+            // Re-assert the phone's free space: bodies forget it (sleep, card swap).
+            try? await reportHostCapacity()
             do {
                 if autofocus {
                     do {
