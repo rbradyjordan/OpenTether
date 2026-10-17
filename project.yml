@@ -52,18 +52,15 @@ targets:
           UIColorName: LaunchBackground
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        NSCameraUsageDescription: "Open Tether uses this to control your connected camera for tethering."
+        NSCameraUsageDescription: "Open Tether controls the camera you connect by cable: firing the shutter, live view and exposure settings."
         NSLocalNetworkUsageDescription: "Open Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you."
         NSBonjourServices:
           - _ptp._tcp
           - _lnp._tcp
           - _bonjour._tcp
-        NSPhotoLibraryAddUsageDescription: "Open Tether saves the photos you choose to export into an album named after your session."
-        NSPhotoLibraryUsageDescription: "Open Tether saves exported photos into your library and checks that the save completed."
+        NSPhotoLibraryAddUsageDescription: "Open Tether saves the photos you choose to export to your photo library."
+        NSPhotoLibraryUsageDescription: "Open Tether reads the photos on a camera you connect by cable, and files exported photos into an album named after your session."
         NSLocationWhenInUseUsageDescription: "Open Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere."
-        UIBackgroundModes:
-          - fetch
-          - processing
         UISupportsDocumentBrowser: true
         CFBundleDocumentTypes:
           - CFBundleTypeName: Camera photos
@@ -95,6 +92,9 @@ targets:
         UIFileSharingEnabled: true
         UIRequiresFullScreen: false
         ITSAppUsesNonExemptEncryption: false
+        # Wi-Fi cameras (GoPro, 360° cameras) only speak plain HTTP on their own network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
 
   TetherTests:
     type: bundle.unit-test

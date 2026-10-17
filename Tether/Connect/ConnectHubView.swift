@@ -67,6 +67,13 @@ struct ConnectHubView: View {
                                systemImage: "book.pages")
                 }
                 .staggeredAppear(4)
+                Button { Task { await DemoSession.start(app) } } label: {
+                    ActionCard(title: "No camera? Try a demo session",
+                               subtitle: "Sample frames arrive as if you were shooting, so you can rate, apply looks and export.",
+                               systemImage: "play.rectangle")
+                }
+                .staggeredAppear(5)
+                .accessibilityHint("Starts a session with sample photos, no camera needed")
             }
             .padding(TetherSpace.l)
         }

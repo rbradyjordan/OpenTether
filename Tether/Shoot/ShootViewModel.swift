@@ -69,7 +69,11 @@ final class ShootViewModel {
     var isDisconnected: Bool { if case .disconnected = status { return true }; return false }
     var readyItems: [CaptureItem] { items.filter { $0.state.isReady } }
     var displayedItem: CaptureItem? { items.first { $0.id == selectedItemID } ?? items.last { $0.state.isReady } }
-    var cameraName: String { identity?.displayName ?? (shootSession.transport == .ftpPush ? "FTP receiver" : "No camera") }
+    var cameraName: String {
+        if let identity { return identity.displayName }
+        if shootSession.workflowTag == DemoSession.tag { return "Demo camera" }
+        return shootSession.transport == .ftpPush ? "FTP receiver" : "No camera"
+    }
     var transportName: String { (identity?.transport ?? shootSession.transport)?.displayName ?? "" }
     var batteryText: String? { properties.first { $0.property == .batteryLevel }?.display }
     var exposureDescriptors: [PropertyDescriptor] {

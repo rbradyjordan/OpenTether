@@ -59,6 +59,11 @@
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_ptp._tcp</string>
@@ -66,25 +71,20 @@
 		<string>_bonjour._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Open Tether uses this to control your connected camera for tethering.</string>
+	<string>Open Tether controls the camera you connect by cable: firing the shutter, live view and exposure settings.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Open Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Open Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Open Tether saves the photos you choose to export into an album named after your session.</string>
+	<string>Open Tether saves the photos you choose to export to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Open Tether saves exported photos into your library and checks that the save completed.</string>
+	<string>Open Tether reads the photos on a camera you connect by cable, and files exported photos into an album named after your session.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>processing</string>
-	</array>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

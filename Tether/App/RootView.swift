@@ -41,38 +41,15 @@ struct RootView: View {
 }
 
 #if DEBUG
-/// Simulator screenshots without a camera: `simctl launch … -OTDemoShoot`
-/// opens an FTP-receive session and drops a few generated frames into it.
+/// Simulator screenshots: `simctl launch … -OTDemoShoot [-OTLandscape]`.
 enum DemoShoot {
     @MainActor static func startIfRequested(_ app: AppModel) async {
         if ProcessInfo.processInfo.arguments.contains("-OTLandscape"),
            let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
         }
-        guard ProcessInfo.processInfo.arguments.contains("-OTDemoShoot"), app.shoot == nil else { return }
-        let shoot = ShootSession(name: "Demo shoot")
-        guard let connection = try? await ConnectionBuilder.startFTPSession(shoot: shoot, services: app.services) else { return }
-        app.activate(connection)
-        guard let vm = app.shoot else { return }
-        let hues: [CGFloat] = [0.58, 0.08, 0.33, 0.75]
-        for (i, hue) in hues.enumerated() {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(String(format: "DEMO_%04d.JPG", i + 1))
-            try? frame(hue: hue).write(to: url)
-            await vm.ingestFTPFile(url, from: "demo")
-        }
-    }
-
-    private static func frame(hue: CGFloat) -> Data {
-        let size = CGSize(width: 1800, height: 1200)
-        let image = UIGraphicsImageRenderer(size: size).image { ctx in
-            let colors = [UIColor(hue: hue, saturation: 0.6, brightness: 0.9, alpha: 1).cgColor,
-                          UIColor(hue: hue + 0.1, saturation: 0.8, brightness: 0.25, alpha: 1).cgColor]
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1])!
-            ctx.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
-            UIColor.white.withAlphaComponent(0.85).setFill()
-            ctx.cgContext.fillEllipse(in: CGRect(x: 700, y: 350, width: 400, height: 400))
-        }
-        return image.jpegData(compressionQuality: 0.85) ?? Data()
+        guard ProcessInfo.processInfo.arguments.contains("-OTDemoShoot") else { return }
+        await DemoSession.start(app, pace: 0)
     }
 }
 #endif
