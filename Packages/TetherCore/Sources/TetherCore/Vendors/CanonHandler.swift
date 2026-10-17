@@ -191,6 +191,8 @@ public enum CanonCodes {
     public static func display(prop: UInt32, value: UInt32) -> String {
         switch prop {
         case Prop.aperture:
+            // 0 = the lens reports no aperture (no lens, manual or adapted lens).
+            if value == 0 { return "—" }
             guard let f = apertures[value] else { return String(format: "ƒ/?(0x%02X)", value) }
             return f == f.rounded() ? String(format: "ƒ/%.0f", f) : String(format: "ƒ/%.1f", f)
         case Prop.shutterSpeed:
@@ -394,20 +396,58 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             // VERIFY: libgphoto2 camera_canon_eos_capture — RemoteReleaseOn(1,0)
             // half-press, (2,0) full press, RemoteReleaseOff(2) then (1).
             // Without AF libgphoto2 sends 3 (full press, no AF) on both.
-            if autofocus {
-                try await engine.run(CanonCodes.Op.remoteReleaseOn, [1, 0], timeout: 15)
-                try await engine.run(CanonCodes.Op.remoteReleaseOn, [2, 0], timeout: 15)
-                try await engine.run(CanonCodes.Op.remoteReleaseOff, [2])
-                try await engine.run(CanonCodes.Op.remoteReleaseOff, [1])
-            } else {
-                try await engine.run(CanonCodes.Op.remoteReleaseOn, [3, 0], timeout: 15)
-                try await engine.run(CanonCodes.Op.remoteReleaseOff, [3])
+            // Drain queued events first: EOS bodies report busy while their
+            // event queue is full (common right after connecting).
+            _ = try? await fetchEvents().forEach { pending.append($0) }
+            do {
+                if autofocus {
+                    do {
+                        try await press(1)
+                    } catch let error where Self.isBusy(error) {
+                        // AF could not start or lock (manual lens, nothing to
+                        // focus on): fire without AF rather than not at all.
+                        try await press(3)
+                        return
+                    }
+                    do {
+                        try await press(2)
+                    } catch {
+                        await release([1])   // don't leave it half-pressed
+                        throw error
+                    }
+                    await release([2, 1])
+                } else {
+                    try await press(3)
+                }
+            } catch let error where Self.isBusy(error) {
+                throw PTPError.vendorGate("The camera won't fire. Check a lens is attached and focused, the camera isn't showing a menu or playback, and the card isn't full.")
             }
         } else if info.supports(CanonCodes.Op.remoteRelease) {
             try await engine.run(CanonCodes.Op.remoteRelease, timeout: 15)
         } else {
             throw PTPError.unsupported("This Canon does not support remote capture over PTP.")
         }
+    }
+
+    /// One shutter stage; a failed press releases what it held.
+    private func press(_ stage: UInt32) async throws {
+        do {
+            try await engine.run(CanonCodes.Op.remoteReleaseOn, [stage, 0], timeout: 15)
+        } catch {
+            await release([stage])
+            throw error
+        }
+        if stage == 3 { await release([3]) }
+    }
+
+    /// Releases never throw: a stuck half-press is worse than a lost error.
+    private func release(_ stages: [UInt32]) async {
+        for stage in stages { _ = try? await engine.execute(PTPRequest(CanonCodes.Op.remoteReleaseOff, parameters: [stage])) }
+    }
+
+    static func isBusy(_ error: Error) -> Bool {
+        if case .response(_, let code, _)? = error as? PTPError { return code == .deviceBusy }
+        return false
     }
 
     // MARK: Events

@@ -85,12 +85,38 @@ final class CanonVendorTests: XCTestCase {
         rig.transport.okAll()
         let h = CanonHandler(engine: rig.engine, info: rig.info)
         try await h.capture(autofocus: true)
-        XCTAssertEqual(rig.codes, [CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOff, CanonCodes.Op.remoteReleaseOff])
-        XCTAssertEqual(rig.requests.map(\.parameters), [[1, 0], [2, 0], [2], [1]])
+        // Queued events are drained first (EOS bodies report busy otherwise).
+        XCTAssertEqual(rig.codes, [CanonCodes.Op.getEvent, CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOn,
+                                   CanonCodes.Op.remoteReleaseOff, CanonCodes.Op.remoteReleaseOff])
+        XCTAssertEqual(rig.requests.map(\.parameters), [[], [1, 0], [2, 0], [2], [1]])
         let rig2 = try await VendorRig(VendorFixtures.canon)
         rig2.transport.okAll()
         try await CanonHandler(engine: rig2.engine, info: rig2.info).capture(autofocus: false)
-        XCTAssertEqual(rig2.requests.map(\.parameters), [[3, 0], [3]])
+        XCTAssertEqual(rig2.requests.map(\.parameters), [[], [3, 0], [3]])
+    }
+
+    func testRefusedAutofocusFallsBackToFiringWithoutAF() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        rig.transport.on(CanonCodes.Op.remoteReleaseOn) { req in req.parameters == [1, 0] ? .fail(.deviceBusy) : .ok() }
+        try await CanonHandler(engine: rig.engine, info: rig.info).capture(autofocus: true)
+        let presses = rig.requests.filter { $0.code == CanonCodes.Op.remoteReleaseOn || $0.code == CanonCodes.Op.remoteReleaseOff }
+        XCTAssertEqual(presses.last?.code, CanonCodes.Op.remoteReleaseOff)
+        XCTAssertEqual(presses.last?.parameters, [3], "fired without AF and let go")
+        XCTAssertTrue(presses.contains { $0.code == CanonCodes.Op.remoteReleaseOff && $0.parameters == [1] }, "the refused half-press is released")
+    }
+
+    func testCameraThatWillNotFireExplainsWhy() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        rig.transport.on(CanonCodes.Op.remoteReleaseOn) { _ in .fail(.deviceBusy) }
+        do {
+            try await CanonHandler(engine: rig.engine, info: rig.info).capture(autofocus: false)
+            XCTFail("should throw")
+        } catch {
+            XCTAssertTrue("\(error)".contains("lens"), "plain explanation, not DeviceBusy")
+        }
+        XCTAssertEqual(CanonCodes.display(prop: CanonCodes.Prop.aperture, value: 0), "—")
     }
 
     func testCaptureFallsBackToRemoteRelease() async throws {

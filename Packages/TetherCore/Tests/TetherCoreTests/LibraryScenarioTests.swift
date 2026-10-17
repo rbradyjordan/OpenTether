@@ -32,10 +32,17 @@ final class LibraryScenarioTests: XCTestCase {
         }
         for i in 1 ... 43 {
             var c = CaptureItem(sessionID: sessionB.id, sequence: i, handle: UInt32(1000 + i), filename: String(format: "DSC%05d.JPG", i), kind: .jpeg, bytes: 10,
-                                receivedAt: Date(timeIntervalSinceNow: -Double(60 * i)), source: .ptpip, cameraID: sony.id)
+                                receivedAt: Self.earlierToday(minutesAgo: i), source: .ptpip, cameraID: sony.id)
             c.state = i > 40 ? .downloading(received: 1, total: 10) : .ready
             try store.save(c)
         }
+    }
+
+    /// "i minutes ago", but never before midnight (the Today shelf test ran
+    /// red in the first 43 minutes of each day).
+    static func earlierToday(minutesAgo i: Int) -> Date {
+        let now = Date()
+        return max(now.addingTimeInterval(-60 * Double(i)), Calendar.current.startOfDay(for: now).addingTimeInterval(Double(i)))
     }
 
     func ids(_ filter: CaptureFilter) throws -> [String] { try store.captureIDs(matching: filter) }
