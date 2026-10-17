@@ -6,6 +6,8 @@ struct ShootView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: ShootViewModel
+    /// iPad: hides the shoot without ending it (the Live pill brings it back).
+    var onMinimize: (() -> Void)? = nil
     @State private var showEndConfirm = false
     @State private var showImporter = false
     @State private var renaming = false
@@ -14,18 +16,35 @@ struct ShootView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
-                VStack(spacing: 0) {
-                    ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter) {
-                        newName = model.shootSession.name; renaming = true
+                if geo.size.width >= TetherLayout.shootSideBySideMinWidth, geo.size.width > geo.size.height {
+                    // iPad landscape: the photo gets the width, controls sit beside it.
+                    HStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            header
+                            if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
+                            HStack(spacing: 0) {
+                                FilmstripView(model: model, vertical: true)
+                                    .frame(width: 92)
+                                Rectangle().fill(TetherColor.hairline).frame(width: 0.5)
+                                canvas
+                            }
+                        }
+                        Rectangle().fill(TetherColor.hairline).frame(width: 0.5)
+                        ShootSidePanel(model: model)
+                            .frame(width: TetherLayout.shootPanelWidth)
                     }
-                    if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
-                    canvas
-                    ExposureBarView(model: model)
-                    FilmstripView(model: model)
-                        .frame(height: 88)
-                    ShootBottomBar(model: model)
+                } else {
+                    VStack(spacing: 0) {
+                        header
+                        if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
+                        canvas
+                        ExposureBarView(model: model)
+                        FilmstripView(model: model)
+                            .frame(height: 88)
+                        ShootBottomBar(model: model)
+                    }
+                    .frame(width: geo.size.width)
                 }
-                .frame(width: geo.size.width)
             }
             .background(TetherColor.surface0)
             .toolbar(.hidden, for: .navigationBar)
@@ -49,6 +68,12 @@ struct ShootView: View {
             }
         }
         .forceDark()
+    }
+
+    private var header: some View {
+        ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter, onMinimize: onMinimize) {
+            newName = model.shootSession.name; renaming = true
+        }
     }
 
     /// Canvas dims to 60 % while the link is down; the reconnect sheet does the talking.
@@ -96,6 +121,7 @@ private struct ShootHeader: View {
     @Bindable var model: ShootViewModel
     @Binding var showEndConfirm: Bool
     @Binding var showImporter: Bool
+    var onMinimize: (() -> Void)?
     var onRename: () -> Void
 
     var body: some View {
@@ -105,6 +131,16 @@ private struct ShootHeader: View {
                 if model.isDisconnected || model.status == .reconnecting { model.showReconnect() } else { model.sheet = .diagnostics }
             }
             Spacer(minLength: TetherSpace.xs)
+            if let onMinimize {
+                Button(action: onMinimize) {
+                    Image(systemName: "rectangle.3.group")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(TetherColor.ink0)
+                        .frame(width: TetherHit.min, height: TetherHit.min)
+                        .tetherGlass(in: Circle(), interactive: true)
+                }
+                .accessibilityLabel("Back to library, keep shooting")
+            }
             Button { showEndConfirm = true } label: {
                 Text("End")
                     .font(TetherFont.callout.weight(.semibold))
@@ -275,5 +311,38 @@ private struct FollowNewestToggle: View {
         .accessibilityLabel("Show newest frame")
         .accessibilityValue(isOn ? "on" : "off")
         .accessibilityHint("When on, each new frame is shown as it arrives")
+    }
+}
+
+/// iPad landscape: exposure as a grid, then rating, shutter and tools at the
+/// bottom where the thumb rests.
+private struct ShootSidePanel: View {
+    @Bindable var model: ShootViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: TetherSpace.s) {
+                    if model.identity != nil {
+                        Text("Exposure").font(TetherFont.caption).foregroundStyle(TetherColor.ink2)
+                            .padding(.horizontal, TetherSpace.m).padding(.top, TetherSpace.m)
+                        ExposureBarView(model: model, grid: true)
+                    }
+                    if let item = model.displayedItem {
+                        Text("Frame").font(TetherFont.caption).foregroundStyle(TetherColor.ink2)
+                            .padding(.horizontal, TetherSpace.m).padding(.top, TetherSpace.s)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.filename).font(TetherFont.callout.weight(.semibold)).foregroundStyle(TetherColor.ink0).lineLimit(1)
+                            Text("#\(item.sequence) · \(ByteCountFormatter.string(fromByteCount: Int64(item.bytes), countStyle: .file))")
+                                .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
+                        }
+                        .padding(.horizontal, TetherSpace.m)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ShootBottomBar(model: model)
+        }
+        .background(TetherColor.surface0)
     }
 }

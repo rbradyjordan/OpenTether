@@ -6,24 +6,37 @@ import TetherCore
 /// no property control.
 struct ExposureBarView: View {
     @Bindable var model: ShootViewModel
+    /// A two-column grid for the iPad side panel instead of a scrolling row.
+    var grid = false
 
     var body: some View {
         if model.identity != nil {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: TetherSpace.s) {
-                    ForEach(TetherProperty.exposureBar) { property in
-                        chip(property, model.properties.first { $0.property == property })
+            Group {
+                if grid {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: TetherSpace.s), GridItem(.flexible())], spacing: TetherSpace.s) {
+                        chips
                     }
-                    if let dest = model.properties.first(where: { $0.property == .captureDestination }) {
-                        chip(.captureDestination, dest)
+                    .padding(TetherSpace.m)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: TetherSpace.s) { chips }
+                            .padding(.horizontal, TetherSpace.m)
+                            .padding(.vertical, TetherSpace.s)
                     }
+                    .background(TetherColor.surface0)
                 }
-                .padding(.horizontal, TetherSpace.m)
-                .padding(.vertical, TetherSpace.s)
             }
-            .background(TetherColor.surface0)
             .overlayTypeCap()
             .accessibilityLabel(model.canControlProperties ? "Exposure settings" : "Exposure settings, read only on this camera")
+        }
+    }
+
+    @ViewBuilder private var chips: some View {
+        ForEach(TetherProperty.exposureBar) { property in
+            chip(property, model.properties.first { $0.property == property })
+        }
+        if let dest = model.properties.first(where: { $0.property == .captureDestination }) {
+            chip(.captureDestination, dest)
         }
     }
 

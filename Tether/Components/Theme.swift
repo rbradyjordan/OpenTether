@@ -306,3 +306,13 @@ enum ColorLabelStyle {
         }
     }
 }
+
+/// Widths for iPad and other wide screens.
+enum TetherLayout {
+    /// Text-heavy screens (onboarding, forms) stay in a readable column.
+    static let readableWidth: CGFloat = 600
+    /// The shoot screen's side panel in landscape on iPad.
+    static let shootPanelWidth: CGFloat = 380
+    /// Below this width the shoot screen stacks (iPhone, iPad portrait, Split View).
+    static let shootSideBySideMinWidth: CGFloat = 900
+}

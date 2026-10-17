@@ -44,6 +44,7 @@ struct OnboardingView: View {
             .controlSize(.large)
             .contentTransition(.numericText())
         }
+        .frame(maxWidth: TetherLayout.readableWidth)
         .padding(.horizontal, TetherSpace.xl)
         .padding(.bottom, TetherSpace.xl)
     }
@@ -103,6 +104,8 @@ private struct OnboardingPageView<Extra: View>: View {
                         .fixedSize(horizontal: false, vertical: true)
                     extra()
                 }
+                .frame(maxWidth: TetherLayout.readableWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, TetherSpace.xl)
                 .padding(.top, 72)
                 .padding(.bottom, 160)
