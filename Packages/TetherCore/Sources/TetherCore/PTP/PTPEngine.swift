@@ -79,7 +79,7 @@ public actor PTPEngine {
                 throw error
             }
             log?.record(.init(request: request, response: response, error: nil, duration: Date().timeIntervalSince(started)))
-            if response.code == .deviceBusy, attempt < retryBusyAttempts {
+            if response.code == .deviceBusy, request.retriesBusy, attempt < retryBusyAttempts {
                 attempt += 1
                 try await Task.sleep(nanoseconds: UInt64(50_000_000) << UInt64(min(attempt, 5)))
                 continue

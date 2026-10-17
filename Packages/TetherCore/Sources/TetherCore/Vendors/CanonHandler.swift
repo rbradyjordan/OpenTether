@@ -116,6 +116,8 @@ public enum CanonCodes {
 
     /// GetViewFinderData record types.
     public static let viewFinderJPEGRecord: UInt32 = 1
+    /// Canon "not ready" (live view still starting).
+    public static let notReady = PTPResponseCode(0xA102)
     public static let viewFinderParam: UInt32 = 0x0010_0000 // VERIFY: libgphoto2 uses 0x00100000; newer bodies accept 0x00200000
 
     // MARK: Value tables (libgphoto2 camlibs/ptp2/config.c). All VERIFY.
@@ -333,6 +335,8 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     private var pending: [CameraEvent] = []
     private var destination: CaptureDestination = .card
     private var liveViewOn = false
+    private var liveViewStarted = Date.distantPast
+    private var liveViewHasFrame = false
     private var frameSequence: UInt64 = 0
 
     public init(engine: PTPEngine, info: PTPDeviceInfo) {
@@ -641,7 +645,12 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         try await setEOSProperty(CanonCodes.Prop.evfMode, 1)
         try await setEOSProperty(CanonCodes.Prop.evfOutputDevice, CanonCodes.Prop.evfOutputPC)
         liveViewOn = true
+        liveViewStarted = Date()
+        liveViewHasFrame = false
     }
+
+    /// Without a first frame by then, the body is not going to send one.
+    static let liveViewStartTimeout: TimeInterval = 8
 
     public func stopLiveView() async {
         guard liveViewOn else { return }
@@ -651,13 +660,20 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
 
     public func nextLiveViewFrame() async throws -> LiveViewFrame? {
         guard liveViewOn else { return nil }
-        let r = try await engine.execute(PTPRequest(CanonCodes.Op.getViewFinderData, parameters: [CanonCodes.viewFinderParam], expectsLargeData: true, timeout: 5))
+        let r = try await engine.execute(PTPRequest(CanonCodes.Op.getViewFinderData, parameters: [CanonCodes.viewFinderParam],
+                                                    expectsLargeData: true, timeout: 5, retriesBusy: false))
         switch r.code {
         case .ok: break
-        case .deviceBusy, .accessDenied: return nil // frame not ready yet
+        case .deviceBusy, .accessDenied, CanonCodes.notReady:
+            // Frame not ready yet; but a body that never sends one gets a reason, not an endless spinner.
+            if !liveViewHasFrame, Date().timeIntervalSince(liveViewStarted) > Self.liveViewStartTimeout {
+                throw PTPError.vendorGate("The camera isn't sending live view. Check a lens is attached and the camera is on its shooting screen, not a menu or playback.")
+            }
+            return nil
         default: throw PTPError.response(op: CanonCodes.Op.getViewFinderData, code: r.code, parameters: r.parameters)
         }
         guard let jpeg = Self.viewFinderJPEG(r.dataIn) else { return nil }
+        liveViewHasFrame = true
         frameSequence += 1
         return LiveViewFrame(jpeg: jpeg, sequence: frameSequence)
     }
