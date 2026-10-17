@@ -7,6 +7,8 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showNew = false
     @State private var pendingDelete: ShootSession?
+    @State private var renaming: ShootSession?
+    @State private var newName = ""
 
     var body: some View {
         ScrollView {
@@ -22,6 +24,7 @@ struct HomeView: View {
                 ForEach(app.sessions) { session in
                     card(session)
                         .contextMenu {
+                            Button { newName = session.name; renaming = session } label: { Label("Rename…", systemImage: "pencil") }
                             Button(role: .destructive) { pendingDelete = session } label: { Label("Delete session", systemImage: "trash") }
                         }
                 }
@@ -45,6 +48,11 @@ struct HomeView: View {
             Button("Keep", role: .cancel) { pendingDelete = nil }
         } message: {
             Text("Frames, ratings and exports in this session are removed from the phone.")
+        }
+        .alert("Rename session", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") { if let s = renaming { app.renameSession(s, to: newName) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
         }
         .onAppear { app.reloadSessions() }
     }

@@ -190,14 +190,24 @@ final class ShootViewModel {
         }
     }
 
+    /// True from the tap until live view is running (or has failed).
+    private(set) var liveViewStarting = false
+    /// True while live view is being switched off.
+    private(set) var liveViewStopping = false
+
     func toggleLiveView() {
-        guard canLiveView else { return }
+        guard canLiveView, !liveViewStarting, !liveViewStopping else { return }
         Task {
             if liveViewActive {
-                await session.stopLiveView()
+                // Back to the photo at once; the camera catches up behind it.
+                liveViewStopping = true
                 liveViewActive = false
                 liveViewImage = nil
+                await session.stopLiveView()
+                liveViewStopping = false
             } else {
+                liveViewStarting = true
+                defer { liveViewStarting = false }
                 do {
                     try await session.startLiveView(quality: .medium)
                     liveViewActive = true
@@ -212,15 +222,21 @@ final class ShootViewModel {
     private(set) var focusPoint: CGPoint?
     private(set) var focusPointID = 0
 
+    /// True while the camera is focusing on the last tap.
+    private(set) var isFocusing = false
+
     func focus(at point: CGPoint) {
         guard canTouchFocus, liveViewActive, isLive else { return }
         focusPoint = point
         focusPointID += 1
+        isFocusing = true
         TetherHaptic.rate()
+        let id = focusPointID
         Task {
             do { try await session.focus(atNormalizedX: point.x, y: point.y) } catch {
                 toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
             }
+            if id == focusPointID { isFocusing = false }
         }
     }
 

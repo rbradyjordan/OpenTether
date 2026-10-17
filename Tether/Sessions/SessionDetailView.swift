@@ -79,11 +79,10 @@ struct SessionDetailView: View {
         .alert("Rename session", isPresented: $renaming) {
             TextField("Name", text: $newName)
             Button("Save") {
-                guard var s = session, !newName.isEmpty else { return }
-                s.name = newName
-                try? app.store.save(s)
+                guard var s = session, !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                app.renameSession(s, to: newName)
+                s.name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                 session = s
-                app.reloadSessions()
             }
             Button("Cancel", role: .cancel) {}
         }

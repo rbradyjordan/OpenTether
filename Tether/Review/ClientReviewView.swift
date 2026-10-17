@@ -9,9 +9,7 @@ struct ClientReviewView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showFilename = false
-    @State private var confirmExit = false
     @State private var showHint = true
-    @State private var cornerHeld = false
     @State private var scale: CGFloat = 1
     @State private var offset: CGSize = .zero
 
@@ -45,10 +43,6 @@ struct ClientReviewView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .forceDark()
-        .confirmationDialog("Leave client review?", isPresented: $confirmExit, titleVisibility: .visible) {
-            Button("Leave review") { dismiss() }
-            Button("Stay", role: .cancel) {}
-        }
         .task {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             withAnimation(.easeOut(duration: reduceMotion ? 0.16 : 0.5)) { showHint = false }
@@ -60,7 +54,7 @@ struct ClientReviewView: View {
     private var hint: some View {
         VStack {
             Spacer()
-            Text("swipe · tap for name · hold corner to leave")
+            Text("swipe · tap for name · hold Exit to leave")
                 .font(TetherFont.hud)
                 .foregroundStyle(TetherColor.ink1)
                 .padding(.horizontal, TetherSpace.l).padding(.vertical, TetherSpace.s)
@@ -71,27 +65,17 @@ struct ClientReviewView: View {
         .accessibilityHidden(true)
     }
 
-    /// Top-left 72 pt corner. A client tapping around never leaves by accident.
+    /// A faint "Hold to exit" button inside the safe area: always findable,
+    /// but a client tapping around never leaves by accident.
     private var hotCorner: some View {
         VStack {
             HStack {
-                Circle()
-                    .fill(TetherColor.ink0.opacity(cornerHeld ? 0.25 : 0))
-                    .frame(width: 72, height: 72)
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 1.2, pressing: { cornerHeld = $0 }) {
-                        cornerHeld = false
-                        confirmExit = true
-                    }
-                    .animation(.easeOut(duration: 0.2), value: cornerHeld)
-                    .accessibilityLabel("Exit client review")
-                    .accessibilityHint("Hold for one second, then confirm")
-                    .accessibilityAddTraits(.isButton)
+                HoldToExitButton { dismiss() }
                 Spacer()
             }
             Spacer()
         }
-        .ignoresSafeArea()
+        .padding(TetherSpace.m)
     }
 
     private var swipe: some Gesture {
@@ -100,5 +84,44 @@ struct ClientReviewView: View {
             if value.translation.width < -40, i + 1 < items.count { model.select(items[i + 1].id) }
             if value.translation.width > 40, i > 0 { model.select(items[i - 1].id) }
         }
+    }
+}
+
+/// Press and hold for 0.8 s; a ring fills while held and the review closes
+/// when it completes. Letting go early cancels.
+private struct HoldToExitButton: View {
+    var action: () -> Void
+    @State private var holding = false
+
+    private static let hold: Double = 0.8
+
+    var body: some View {
+        HStack(spacing: TetherSpace.xs) {
+            ZStack {
+                Circle().stroke(TetherColor.ink0.opacity(0.25), lineWidth: 2)
+                Circle()
+                    .trim(from: 0, to: holding ? 1 : 0)
+                    .stroke(TetherColor.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(holding ? .linear(duration: Self.hold) : .easeOut(duration: 0.15), value: holding)
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+            }
+            .frame(width: 22, height: 22)
+            Text(holding ? "Keep holding" : "Hold to exit").font(TetherFont.hud)
+        }
+        .foregroundStyle(TetherColor.ink0)
+        .padding(.horizontal, TetherSpace.m)
+        .frame(minHeight: TetherHit.min)
+        .background(Color.black.opacity(0.55), in: Capsule())
+        .opacity(holding ? 1 : 0.55)
+        .contentShape(Capsule())
+        .onLongPressGesture(minimumDuration: Self.hold, pressing: { holding = $0 }) {
+            holding = false
+            action()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Exit client review")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { action() }
     }
 }

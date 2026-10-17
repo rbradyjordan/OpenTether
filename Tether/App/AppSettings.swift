@@ -18,6 +18,10 @@ final class AppSettings {
         ftpPassword = store.setting(Keys.ftpPassword) ?? AppSettings.randomPassword()
         ftpPort = UInt16(store.setting(Keys.ftpPort) ?? "") ?? 2121
         hasOnboarded = store.setting(Keys.onboarded) == "1"
+        #if DEBUG
+        // Simulator screenshots: `simctl launch … -OTSkipOnboarding`.
+        if ProcessInfo.processInfo.arguments.contains("-OTSkipOnboarding") { hasOnboarded = true }
+        #endif
         if store.setting(Keys.ftpPassword) == nil { store.setSetting(Keys.ftpPassword, ftpPassword) }
     }
 

@@ -142,6 +142,7 @@ public enum CanonCodes {
 
     /// FocusMode (0xD108) values (libgphoto2 eos_focusmodes): 0 One Shot,
     /// 1 AI Servo, 2 AI Focus, 3 Manual.
+    public static let focusModeOneShot: UInt32 = 0
     public static let focusModeServo: UInt32 = 1
     public static let focusModeAIFocus: UInt32 = 2
 
@@ -443,6 +444,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     }
 
     public func capture(autofocus: Bool) async throws {
+        await restoreFocusModeAfterTouch()
         if info.supports(CanonCodes.Op.remoteReleaseOn) {
             // VERIFY: libgphoto2 camera_canon_eos_capture — RemoteReleaseOn(1,0)
             // half-press, (2,0) full press, RemoteReleaseOff(2) then (1).
@@ -781,6 +783,11 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     /// Touch AF: move the AF point to the tapped spot, then focus there.
     public func focus(atNormalizedX nx: Double, y ny: Double) async throws {
         guard capabilities.contains(.touchAutofocus) else { throw PTPError.unsupported("Touch focus is not available on this camera.") }
+        // Servo and AI Focus never "finish": they drive the lens until told
+        // to stop, and no wait fits every lens and scene. One Shot stops by
+        // itself the moment it locks, so a touch runs in One Shot and the
+        // user's mode comes back before the shutter fires.
+        await useOneShotForTouchAF()
         // VERIFY: fallback space when the body has not sent FocusInfoEx yet
         // (EOS R full-sensor AF coordinates).
         let space = afCoordinateSpace ?? (8192, 5464)
@@ -789,28 +796,44 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         try await engine.run(CanonCodes.Op.touchAfPosition, [CanonCodes.touchAfType, x, y])
         guard info.supports(CanonCodes.Op.doAf) else { return }
         try await engine.run(CanonCodes.Op.doAf, timeout: 10)
-        // One Shot locks and stops by itself. Servo (and AI Focus, which can
-        // switch to it) keeps driving the lens, so give it time to land and
-        // then stop it; the lens stays where it focused. The AF-result event
-        // can't be the cue: bodies send it as AF starts.
-        let mode = values[CanonCodes.Prop.focusMode]
-        let tracks = mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus
-        if tracks {
-            let started = Date()
-            while Date().timeIntervalSince(started) < Self.servoTouchAfSettle {
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
-            }
-            if info.supports(CanonCodes.Op.afCancel) {
-                _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
-            }
-        } else if let events = try? await fetchEvents() {
-            pending.append(contentsOf: events)
+        // Keep the event queue drained while the lens moves (the UI shows
+        // the box pulsing until this returns). Nothing is cancelled.
+        let started = Date()
+        while Date().timeIntervalSince(started) < Self.touchAfIndicatorTime {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
         }
     }
 
-    /// How long Servo AF runs after a touch before it is stopped.
-    static let servoTouchAfSettle: TimeInterval = 1.2
+    /// How long the app shows "focusing" after a touch. The camera decides
+    /// when it is in focus; this only paces the indicator.
+    static let touchAfIndicatorTime: TimeInterval = 1.0
+
+    /// The user's AF mode while a touch has the body in One Shot.
+    private var focusModeBeforeTouch: UInt32?
+
+    private func useOneShotForTouchAF() async {
+        guard let mode = values[CanonCodes.Prop.focusMode],
+              mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus else { return }
+        do {
+            try await setEOSProperty(CanonCodes.Prop.focusMode, CanonCodes.focusModeOneShot)
+            if focusModeBeforeTouch == nil { focusModeBeforeTouch = mode }
+            canonLog("touch AF: One Shot for the touch (was \(mode))")
+        } catch {
+            // Body won't switch (lens AF/MF switch, mode locked): let it track
+            // rather than stop it before it focuses.
+            canonLog("touch AF: couldn't switch to One Shot: \(error)")
+        }
+    }
+
+    /// Puts the user's AF mode back, unless they changed it on the body meanwhile.
+    func restoreFocusModeAfterTouch() async {
+        guard let mode = focusModeBeforeTouch else { return }
+        focusModeBeforeTouch = nil
+        guard values[CanonCodes.Prop.focusMode] == CanonCodes.focusModeOneShot else { return }
+        _ = try? await setEOSProperty(CanonCodes.Prop.focusMode, mode)
+        canonLog("touch AF: restored AF mode \(mode)")
+    }
 
     /// Without a first frame by then, the body is not going to send one.
     static let liveViewStartTimeout: TimeInterval = 8
@@ -818,6 +841,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     public func stopLiveView() async {
         guard liveViewOn else { return }
         liveViewOn = false
+        await restoreFocusModeAfterTouch()
         _ = try? await setEOSProperty(CanonCodes.Prop.evfOutputDevice, CanonCodes.Prop.evfOutputOff)
     }
 

@@ -8,12 +8,16 @@ struct ShootView: View {
     @Bindable var model: ShootViewModel
     @State private var showEndConfirm = false
     @State private var showImporter = false
+    @State private var renaming = false
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
                 VStack(spacing: 0) {
-                    ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter)
+                    ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter) {
+                        newName = model.shootSession.name; renaming = true
+                    }
                     if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
                     canvas
                     ExposureBarView(model: model)
@@ -32,6 +36,11 @@ struct ShootView: View {
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image, .rawImage, .movie, .folder, .data], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { model.importFiles(urls) }
             }
+            .alert("Rename session", isPresented: $renaming) {
+                TextField("Name", text: $newName)
+                Button("Save") { app.renameSession(model.shootSession, to: newName) }
+                Button("Cancel", role: .cancel) {}
+            }
             .confirmationDialog("End this session?", isPresented: $showEndConfirm, titleVisibility: .visible) {
                 Button("End session", role: .destructive) { Task { await app.endShoot() } }
                 Button("Keep shooting", role: .cancel) {}
@@ -45,8 +54,9 @@ struct ShootView: View {
     /// Canvas dims to 60 % while the link is down; the reconnect sheet does the talking.
     private var canvas: some View {
         ZStack(alignment: .bottom) {
-            if model.liveViewActive, model.canLiveView {
+            if (model.liveViewActive || model.liveViewStarting), model.canLiveView {
                 LiveViewView(image: model.liveViewImage, focusPoint: model.focusPoint, focusPointID: model.focusPointID,
+                             isFocusing: model.isFocusing, isStarting: model.liveViewStarting,
                              onFocus: model.canTouchFocus ? { model.focus(at: $0) } : nil)
             } else {
                 EditCanvasView(model: model)
@@ -86,6 +96,7 @@ private struct ShootHeader: View {
     @Bindable var model: ShootViewModel
     @Binding var showEndConfirm: Bool
     @Binding var showImporter: Bool
+    var onRename: () -> Void
 
     var body: some View {
         HStack(spacing: TetherSpace.s) {
@@ -105,6 +116,7 @@ private struct ShootHeader: View {
             .accessibilityLabel("End session")
             Menu {
                 Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
+                Button(action: onRename) { Label("Rename session…", systemImage: "pencil") }
                 Button { showImporter = true } label: { Label("Import files…", systemImage: "square.and.arrow.down") }
                 if model.isDisconnected {
                     Button { model.showReconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
@@ -193,13 +205,20 @@ private struct CanvasOverlay: View {
             Spacer()
             if model.canLiveView {
                 Button { model.toggleLiveView() } label: {
-                    Image(systemName: model.liveViewActive ? "video.fill" : "video")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(model.liveViewActive ? TetherColor.accent : TetherColor.ink0)
-                        .frame(width: TetherHit.min, height: TetherHit.min)
-                        .tetherGlass(in: Circle(), interactive: true)
+                    ZStack {
+                        if model.liveViewStarting || model.liveViewStopping {
+                            ProgressView().tint(TetherColor.accent)
+                        } else {
+                            Image(systemName: model.liveViewActive ? "video.fill" : "video")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(model.liveViewActive ? TetherColor.accent : TetherColor.ink0)
+                        }
+                    }
+                    .frame(width: TetherHit.min, height: TetherHit.min)
+                    .tetherGlass(in: Circle(), interactive: true)
                 }
-                .accessibilityLabel(model.liveViewActive ? "Stop live view" : "Start live view")
+                .disabled(model.liveViewStarting || model.liveViewStopping)
+                .accessibilityLabel(model.liveViewStarting ? "Starting live view" : model.liveViewActive ? "Stop live view" : "Start live view")
             }
         }
         .padding(TetherSpace.m)

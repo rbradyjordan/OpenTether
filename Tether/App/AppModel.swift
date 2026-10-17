@@ -137,6 +137,23 @@ final class AppModel {
         startAutomations(for: connection)
     }
 
+    /// Renames a session; the live one goes through its TetherSession so a
+    /// later save from the shoot doesn't put the old name back.
+    func renameSession(_ session: ShootSession, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if let shoot, shoot.shootSession.id == session.id {
+            shoot.rename(trimmed)
+            // The live session saves on its own actor; pick the name up after.
+            Task { try? await Task.sleep(nanoseconds: 300_000_000); reloadSessions() }
+        } else {
+            var s = session
+            s.name = trimmed
+            try? store.save(s)
+        }
+        reloadSessions()
+    }
+
     func endShoot() async {
         guard let shoot else { return }
         await shoot.end()

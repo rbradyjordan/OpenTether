@@ -6,6 +6,10 @@ struct LiveViewView: View {
     /// Last focus tap (0…1 of the frame) and a counter that restarts the box animation.
     var focusPoint: CGPoint? = nil
     var focusPointID = 0
+    /// The camera is still focusing on the last tap: the box pulses until it's done.
+    var isFocusing = false
+    /// Live view was asked for and the first frame hasn't arrived yet.
+    var isStarting = false
     /// Set when the body supports touch AF; called with 0…1 of the frame.
     var onFocus: ((CGPoint) -> Void)? = nil
 
@@ -17,7 +21,7 @@ struct LiveViewView: View {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
                     if let focusPoint {
                         let frame = Self.fittedRect(image.size, in: geo.size)
-                        FocusBox()
+                        FocusBox(isFocusing: isFocusing)
                             .id(focusPointID)
                             .position(x: frame.minX + focusPoint.x * frame.width,
                                       y: frame.minY + focusPoint.y * frame.height)
@@ -25,7 +29,7 @@ struct LiveViewView: View {
                 } else {
                     VStack(spacing: TetherSpace.s) {
                         ProgressView().tint(TetherColor.ink1)
-                        Text("Waiting for live view…").font(TetherFont.callout).foregroundStyle(TetherColor.ink1)
+                        Text(isStarting ? "Starting live view…" : "Waiting for live view…").font(TetherFont.callout).foregroundStyle(TetherColor.ink1)
                     }
                 }
                 VStack {
@@ -63,9 +67,12 @@ struct LiveViewView: View {
     }
 }
 
-/// The AF box: lands slightly large, settles, then fades away.
+/// The AF box: lands slightly large, pulses while the camera focuses,
+/// then fades away once it's done.
 private struct FocusBox: View {
+    var isFocusing: Bool
     @State private var settled = false
+    @State private var pulse = false
     @State private var gone = false
 
     var body: some View {
@@ -73,12 +80,16 @@ private struct FocusBox: View {
             .stroke(TetherColor.accent, lineWidth: 2)
             .frame(width: 72, height: 72)
             .scaleEffect(settled ? 1 : 1.35)
-            .opacity(gone ? 0 : 1)
+            .opacity(gone ? 0 : (isFocusing && pulse ? 0.45 : 1))
             .shadow(color: .black.opacity(0.4), radius: 3)
             .allowsHitTesting(false)
-            .task {
+            .onAppear {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { settled = true }
-                try? await Task.sleep(nanoseconds: 900_000_000)
+                withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { pulse = true }
+            }
+            .task(id: isFocusing) {
+                guard !isFocusing else { return }
+                try? await Task.sleep(nanoseconds: 600_000_000)
                 withAnimation(.easeOut(duration: 0.35)) { gone = true }
             }
     }

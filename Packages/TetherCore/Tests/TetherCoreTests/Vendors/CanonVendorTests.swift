@@ -271,26 +271,39 @@ final class CanonVendorTests: XCTestCase {
         ops: [0x9114, 0x9115, 0x9116, 0x9110, 0x9128, 0x9129, 0x9107, 0x9117, 0x9153, 0x910F, 0x915B, 0x9154, 0x9160],
         extraStandardProps: false, vendorExtension: 0x0B)
 
-    private func touchFocus(focusMode: UInt32) async throws -> [PTPOperationCode] {
+    private func touchFocusRig(focusMode: UInt32) async throws -> (VendorRig, CanonHandler) {
         let rig = try await VendorRig(Self.canonTouchAF)
         rig.transport.okAll()
         let h = CanonHandler(engine: rig.engine, info: rig.info)
         h.ingest(Data(Self.propValueChanged(CanonCodes.Prop.focusMode, focusMode) + Self.terminator))
         try await h.focus(atNormalizedX: 0.5, y: 0.5)
-        return rig.codes
+        return (rig, h)
     }
 
-    func testOneShotTouchFocusIsNotCancelled() async throws {
-        let codes = try await touchFocus(focusMode: 0)
-        XCTAssertTrue(codes.contains(CanonCodes.Op.touchAfPosition))
-        XCTAssertTrue(codes.contains(CanonCodes.Op.doAf))
-        XCTAssertFalse(codes.contains(CanonCodes.Op.afCancel))
+    private func focusModeWrites(_ rig: VendorRig) -> [Data?] {
+        rig.requests.filter { $0.code == CanonCodes.Op.setDevicePropValueEx }.map(\.dataOut)
+            .filter { $0 == CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 0)
+                   || $0 == CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 1) }
     }
 
-    func testServoTouchFocusStopsAfterSettling() async throws {
-        let codes = try await touchFocus(focusMode: CanonCodes.focusModeServo)
-        XCTAssertEqual(codes.last, CanonCodes.Op.afCancel)
-        XCTAssertLessThan(codes.firstIndex(of: CanonCodes.Op.doAf)!, codes.firstIndex(of: CanonCodes.Op.afCancel)!)
+    func testOneShotTouchFocusLeavesTheModeAlone() async throws {
+        let (rig, _) = try await touchFocusRig(focusMode: CanonCodes.focusModeOneShot)
+        XCTAssertTrue(rig.codes.contains(CanonCodes.Op.touchAfPosition))
+        XCTAssertTrue(rig.codes.contains(CanonCodes.Op.doAf))
+        XCTAssertFalse(rig.codes.contains(CanonCodes.Op.afCancel))
+        XCTAssertTrue(focusModeWrites(rig).isEmpty)
+    }
+
+    func testServoTouchFocusRunsInOneShotAndRestoresBeforeCapture() async throws {
+        let (rig, h) = try await touchFocusRig(focusMode: CanonCodes.focusModeServo)
+        XCTAssertFalse(rig.codes.contains(CanonCodes.Op.afCancel), "the lens must never be stopped mid-focus")
+        XCTAssertEqual(focusModeWrites(rig), [CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 0)])
+        let oneShot = rig.codes.firstIndex(of: CanonCodes.Op.setDevicePropValueEx)!
+        XCTAssertLessThan(oneShot, rig.codes.firstIndex(of: CanonCodes.Op.doAf)!)
+        try? await h.capture(autofocus: true)
+        XCTAssertEqual(focusModeWrites(rig).last, CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 1))
+        let restore = rig.codes.lastIndex(of: CanonCodes.Op.setDevicePropValueEx)!
+        XCTAssertLessThan(restore, rig.codes.firstIndex(of: CanonCodes.Op.remoteReleaseOn)!)
     }
 
     func testLiveViewSetsEvfAndExtractsJPEGRecord() async throws {
