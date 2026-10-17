@@ -34,6 +34,9 @@ public enum CanonCodes {
         public static let remoteReleaseOff = PTPOperationCode(0x9129)
         public static let getViewFinderData = PTPOperationCode(0x9153)
         public static let doAf = PTPOperationCode(0x9154)
+        /// 3 args: type, x, y (libgphoto2 ptp.h); x/y in the AF coordinate
+        /// space FocusInfoEx reports.
+        public static let touchAfPosition = PTPOperationCode(0x915B)
         public static let driveLens = PTPOperationCode(0x9155)
         public static let afCancel = PTPOperationCode(0x9160)
         public static let getPartialObjectEx64 = PTPOperationCode(0x9187) // VERIFY: libgphoto2 PTP_OC_CANON_EOS_GetPartialObjectEx64
@@ -57,6 +60,8 @@ public enum CanonCodes {
         public static let captureDestination: UInt32 = 0xD11C
         public static let lensName: UInt32 = 0xD1C0 // VERIFY: libgphoto2 PTP_DPC_CANON_EOS_LensName
         public static let evfOutputDevice: UInt32 = 0xD1B0
+        /// FocusInfoEx: AF points plus the AF coordinate space (width, height).
+        public static let focusInfoEx: UInt32 = 0xD1D3
         public static let evfMode: UInt32 = 0xD1B3
         public static let evfWhiteBalance: UInt32 = 0xD1B4
         public static let evfZoom: UInt32 = 0xD1BC
@@ -96,6 +101,17 @@ public enum CanonCodes {
         public static let afResult: UInt32 = 0xC1A3
         public static let objectAddedEx64: UInt32 = 0xC1A7 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedEx64
         public static let objectAddedUnknown64: UInt32 = 0xC1A8 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedUnknown64
+        public static let requestObjectTransfer64: UInt32 = 0xC1A9 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_RequestObjectTransfer64
+    }
+
+    /// Offsets inside a RequestObjectTransfer record (libgphoto2 `PTP_ece_OI_*`).
+    /// The 64-bit variant widens the size, pushing the name back by 4. VERIFY.
+    public enum TransferRequestLayout {
+        public static let handle = 8
+        public static let format = 0x0C
+        public static let size = 0x14
+        public static let name = 0x1C
+        public static let name64 = 0x20
     }
 
     /// Offsets inside an ObjectAddedEx record (from the record start).
@@ -116,6 +132,10 @@ public enum CanonCodes {
 
     /// GetViewFinderData record types.
     public static let viewFinderJPEGRecord: UInt32 = 1
+    /// TouchAfPosition `type` argument. VERIFY on hardware: libgphoto2
+    /// leaves it to the caller; 0 is assumed to mean "move the AF frame".
+    public static let touchAfType: UInt32 = 0
+
     /// Canon "not ready" (live view still starting).
     public static let notReady = PTPResponseCode(0xA102)
     public static let viewFinderParam: UInt32 = 0x0010_0000 // VERIFY: libgphoto2 uses 0x00100000; newer bodies accept 0x00200000
@@ -335,6 +355,8 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     private var pending: [CameraEvent] = []
     private var destination: CaptureDestination = .card
     private var liveViewOn = false
+    /// AF coordinate space from FocusInfoEx, once the body has sent it.
+    private(set) var afCoordinateSpace: (width: Int, height: Int)?
     private var liveViewStarted = Date.distantPast
     private var liveViewHasFrame = false
     private var frameSequence: UInt64 = 0
@@ -357,6 +379,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         if twoStage || info.supports(CanonCodes.Op.doAf) { caps.insert(.autofocus) }
         if info.supports(.getThumb) { caps.insert(.thumbnails) }
         if info.supports(CanonCodes.Op.remoteReleaseOn) { caps.insert(.bulbCapture) }
+        if info.supports(CanonCodes.Op.touchAfPosition), info.supports(CanonCodes.Op.getViewFinderData) { caps.insert(.touchAutofocus) }
         capabilities = caps
     }
 
@@ -489,6 +512,13 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             switch rec.type {
             case CanonCodes.Event.objectAddedEx, CanonCodes.Event.objectAddedEx64, CanonCodes.Event.objectAddedUnknown64:
                 if let obj = Self.objectAdded(rec, is64: rec.type != CanonCodes.Event.objectAddedEx, destination: destination) {
+                    // Card copies while shooting to the phone arrive again as a
+                    // transfer request; only one of the two is downloaded.
+                    if obj.inSDRAM || destination == .card { out.append(.objectAdded(obj)) }
+                }
+            case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64:
+                // A capture waiting in the body's memory; it stays busy until we take it.
+                if let obj = Self.transferRequest(rec, is64: rec.type == CanonCodes.Event.requestObjectTransfer64) {
                     out.append(.objectAdded(obj))
                 }
             case CanonCodes.Event.objectRemoved:
@@ -496,6 +526,9 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             case CanonCodes.Event.propValueChanged:
                 guard let prop = rec.u32(at: 8) else { continue }
                 if rec.bytes.count >= 16, let v = rec.u32(at: 12) { values[prop] = v }
+                if prop == CanonCodes.Prop.focusInfoEx, let space = Self.afCoordinateSpace(fromFocusInfoRecord: rec) {
+                    afCoordinateSpace = space
+                }
                 out.append(.propertyChanged(CanonCodes.property(for: prop)))
             case CanonCodes.Event.availListChanged:
                 guard let prop = rec.u32(at: 8), let count = rec.u32(at: 16) else { continue }
@@ -523,6 +556,14 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         return out
     }
 
+    /// FocusInfoEx blob (starts at byte 12 of the record): u32 size, u16
+    /// halfsize, u16 version, u16 points, u16 in use, u16 sizeX, u16 sizeY…
+    /// (libgphoto2 ptp_unpack_EOS_FocusInfoEx).
+    static func afCoordinateSpace(fromFocusInfoRecord rec: CanonEventRecord) -> (width: Int, height: Int)? {
+        guard let w = rec.u16(at: 12 + 12), let h = rec.u16(at: 12 + 14), w > 0, h > 0 else { return nil }
+        return (Int(w), Int(h))
+    }
+
     static func objectAdded(_ rec: CanonEventRecord, is64: Bool, destination: CaptureDestination) -> NewObject? {
         typealias L = CanonCodes.ObjectAddedLayout
         guard let handle = rec.u32(at: L.handle), handle != 0 else { return nil }
@@ -544,8 +585,18 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
                                  parentObject: parent, filename: name)
         if format.rawValue == 0, !name.isEmpty { info.objectFormat = .undefined }
         // VERIFY: host-memory objects report storage 0 (or 0x8000xxxx on some bodies).
-        let inRAM = storage == 0 || (storage & 0xFFFF_0000) == 0x8000_0000 || destination != .card
+        let inRAM = storage == 0 || (storage & 0xFFFF_0000) == 0x8000_0000
         return NewObject(handle: handle, storageID: storage, info: info, inSDRAM: inRAM)
+    }
+
+    static func transferRequest(_ rec: CanonEventRecord, is64: Bool) -> NewObject? {
+        typealias L = CanonCodes.TransferRequestLayout
+        guard let handle = rec.u32(at: L.handle), handle != 0 else { return nil }
+        let format = PTPObjectFormat(rec.u16(at: L.format) ?? 0)
+        let size = rec.u32(at: L.size) ?? 0
+        let name = rec.cString(at: is64 ? L.name64 : L.name)
+        let info = PTPObjectInfo(storageID: 0, objectFormat: format, objectCompressedSize: size, parentObject: 0, filename: name)
+        return NewObject(handle: handle, storageID: 0, info: info, inSDRAM: true)
     }
 
     public func translate(_ event: PTPEvent) async -> CameraEvent? {
@@ -553,8 +604,11 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         case CanonCodes.Event.requestGetEvent:
             // The camera asks us to poll; the next pollEvents does.
             return nil
+        case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64:
+            return event.parameters.first.map { .objectAdded(NewObject(handle: $0, inSDRAM: true)) }
         case CanonCodes.Event.objectAddedEx, CanonCodes.Event.objectAddedEx64:
-            return event.parameters.first.map { .objectAdded(NewObject(handle: $0, inSDRAM: destination != .card)) }
+            guard destination == .card else { return nil }
+            return event.parameters.first.map { .objectAdded(NewObject(handle: $0, inSDRAM: false)) }
         case CanonCodes.Event.propValueChanged, CanonCodes.Event.availListChanged:
             return .propertyChanged(event.parameters.first.flatMap { CanonCodes.property(for: $0) })
         case CanonCodes.Event.cameraStatusChanged:
@@ -627,8 +681,16 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             return try await generic.fetchObject(object, progress: progress)
         }
         var oi = object.info
-        if oi == nil || oi?.objectCompressedSize == 0 { oi = try await engine.getObjectInfo(object.handle) }
-        guard let infoOut = oi else { throw PTPError.malformed("No ObjectInfo for Canon SDRAM object") }
+        if oi == nil || oi?.objectCompressedSize == 0 {
+            // Memory objects often refuse GetObjectInfo; a short timeout keeps
+            // a refusal from stalling the queue.
+            if let fetched = try? PTPObjectInfo(parsing: try await engine.execute(PTPRequest(.getObjectInfo, parameters: [object.handle], timeout: 5)).dataIn) {
+                oi = fetched
+            }
+        }
+        guard let infoOut = oi, infoOut.objectCompressedSize > 0 else {
+            throw PTPError.malformed("The camera didn't say how big capture \(object.handle) is.")
+        }
         let total = infoOut.objectCompressedSize
         var out = Data()
         out.reserveCapacity(Int(total))
@@ -658,6 +720,24 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         liveViewOn = true
         liveViewStarted = Date()
         liveViewHasFrame = false
+        // Ask for FocusInfoEx so touch AF knows the coordinate space.
+        if afCoordinateSpace == nil, info.supports(CanonCodes.Op.requestDevicePropValue) {
+            _ = try? await engine.execute(PTPRequest(CanonCodes.Op.requestDevicePropValue, parameters: [CanonCodes.Prop.focusInfoEx]))
+            if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
+        }
+    }
+
+    /// Touch AF: move the AF point to the tapped spot, then focus there.
+    public func focus(atNormalizedX nx: Double, y ny: Double) async throws {
+        guard capabilities.contains(.touchAutofocus) else { throw PTPError.unsupported("Touch focus is not available on this camera.") }
+        // VERIFY: fallback space when the body has not sent FocusInfoEx yet
+        // (EOS R full-sensor AF coordinates).
+        let space = afCoordinateSpace ?? (8192, 5464)
+        let x = UInt32(max(0, min(1, nx)) * Double(space.width - 1))
+        let y = UInt32(max(0, min(1, ny)) * Double(space.height - 1))
+        try await engine.run(CanonCodes.Op.touchAfPosition, [CanonCodes.touchAfType, x, y])
+        if info.supports(CanonCodes.Op.doAf) { try await engine.run(CanonCodes.Op.doAf, timeout: 10) }
+        if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
     }
 
     /// Without a first frame by then, the body is not going to send one.

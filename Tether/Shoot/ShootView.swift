@@ -46,7 +46,8 @@ struct ShootView: View {
     private var canvas: some View {
         ZStack(alignment: .bottom) {
             if model.liveViewActive, model.canLiveView {
-                LiveViewView(image: model.liveViewImage)
+                LiveViewView(image: model.liveViewImage, focusPoint: model.focusPoint, focusPointID: model.focusPointID,
+                             onFocus: model.canTouchFocus ? { model.focus(at: $0) } : nil)
             } else {
                 EditCanvasView(model: model)
             }
@@ -93,6 +94,15 @@ private struct ShootHeader: View {
                 model.sheet = .diagnostics
             }
             Spacer(minLength: TetherSpace.xs)
+            Button { showEndConfirm = true } label: {
+                Text("End")
+                    .font(TetherFont.callout.weight(.semibold))
+                    .foregroundStyle(TetherColor.ink0)
+                    .padding(.horizontal, TetherSpace.m)
+                    .frame(minHeight: TetherHit.min)
+                    .tetherGlass(in: Capsule(), interactive: true)
+            }
+            .accessibilityLabel("End session")
             Menu {
                 Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
                 Button { showImporter = true } label: { Label("Import files…", systemImage: "square.and.arrow.down") }
@@ -100,9 +110,10 @@ private struct ShootHeader: View {
                     Button { model.sheet = .reconnect } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
                 }
                 Divider()
+                Button(role: .destructive) { showEndConfirm = true } label: { Label("End session", systemImage: "stop.circle") }
                 // Session commands (save as template, end) come from the shared command list.
-                CommandMenuContent(commands: app.commands.available(selection: [], inShoot: true).filter { $0.group == .session }) { cmd in
-                    if cmd.id == "session.end" { showEndConfirm = true } else { app.commands.run(cmd, on: []) }
+                CommandMenuContent(commands: app.commands.available(selection: [], inShoot: true).filter { $0.group == .session && $0.id != "session.end" }) { cmd in
+                    app.commands.run(cmd, on: [])
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")

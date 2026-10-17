@@ -62,6 +62,7 @@ final class ShootViewModel {
     var capabilities: CameraCapabilities { identity?.capabilities ?? [] }
     var canCapture: Bool { capabilities.contains(.remoteCapture) }
     var canLiveView: Bool { capabilities.contains(.liveView) }
+    var canTouchFocus: Bool { capabilities.contains(.touchAutofocus) }
     var canControlProperties: Bool { capabilities.contains(.propertyControl) }
     var isImportOnly: Bool { identity != nil && !canCapture }
     var isLive: Bool { status.isLive }
@@ -203,6 +204,22 @@ final class ShootViewModel {
                 } catch {
                     toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle")
                 }
+            }
+        }
+    }
+
+    /// Where the user last tapped on live view (0…1), shown as the AF box.
+    private(set) var focusPoint: CGPoint?
+    private(set) var focusPointID = 0
+
+    func focus(at point: CGPoint) {
+        guard canTouchFocus, liveViewActive, isLive else { return }
+        focusPoint = point
+        focusPointID += 1
+        TetherHaptic.rate()
+        Task {
+            do { try await session.focus(atNormalizedX: point.x, y: point.y) } catch {
+                toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
             }
         }
     }

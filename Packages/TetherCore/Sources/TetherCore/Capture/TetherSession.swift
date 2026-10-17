@@ -271,6 +271,12 @@ public actor TetherSession {
         }
     }
 
+    /// Touch AF: focus at a point of the live-view frame, 0…1 from the top left.
+    public func focus(atNormalizedX x: Double, y: Double) async throws {
+        guard let handler, status.isLive else { throw PTPError.notConnected }
+        try await handler.focus(atNormalizedX: min(max(x, 0), 1), y: min(max(y, 0), 1))
+    }
+
     public func stopLiveView() async {
         guard liveViewTask != nil else { return }
         liveViewTask?.cancel()

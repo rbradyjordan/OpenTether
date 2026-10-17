@@ -120,6 +120,7 @@ public struct CameraCapabilities: OptionSet, Codable, Sendable, Hashable {
     public static let thumbnails         = CameraCapabilities(rawValue: 1 << 11)
     public static let eventPush          = CameraCapabilities(rawValue: 1 << 12) // events arrive without polling
     public static let importOnly         = CameraCapabilities(rawValue: 1 << 13) // generic PTP: watch + download only
+    public static let touchAutofocus     = CameraCapabilities(rawValue: 1 << 14) // focus at a point picked on live view
 
     public var summary: [String] {
         var out = [String]()

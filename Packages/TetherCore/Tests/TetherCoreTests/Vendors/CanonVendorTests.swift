@@ -151,6 +151,30 @@ final class CanonVendorTests: XCTestCase {
         XCTAssertEqual(h.available[CanonCodes.Prop.iso], [0x48, 0x50, 0x58])
     }
 
+    static func transferRequest(handle: UInt32, format: UInt16, size: UInt32, name: String) -> [UInt8] {
+        var body = ByteBuffer()
+        body.write(handle)            // 0x08
+        body.write(format)            // 0x0C
+        body.write(UInt16(0)); body.write(UInt32(0)) // pad to 0x14
+        body.write(size)              // 0x14
+        body.write(UInt32(0)) // 0x18 pad
+        body.write(Array(name.utf8) + [0])
+        return record(type: CanonCodes.Event.requestObjectTransfer, body: body.bytes)
+    }
+
+    func testTransferRequestBecomesSDRAMObjectWithSizeAndName() {
+        let t = ScriptedTransport(deviceInfo: VendorFixtures.canon)
+        let h = CanonHandler(engine: PTPEngine(transport: t), info: VendorFixtures.canon)
+        let events = h.ingest(Data(Self.transferRequest(handle: 0x9000_0001, format: 0x3801, size: 8_765_432, name: "IMG_0100.JPG") + Self.terminator))
+        XCTAssertEqual(events.count, 1)
+        guard case .objectAdded(let obj) = events[0] else { return XCTFail("expected objectAdded, got \(events)") }
+        XCTAssertEqual(obj.handle, 0x9000_0001)
+        XCTAssertTrue(obj.inSDRAM)
+        XCTAssertEqual(obj.info?.objectCompressedSize, 8_765_432)
+        XCTAssertEqual(obj.info?.filename, "IMG_0100.JPG")
+        XCTAssertEqual(obj.info?.objectFormat, .exifJPEG)
+    }
+
     func testSDRAMObjectIsFlaggedWhenStorageIsHost() {
         let rec = CanonEventRecord.parse(Data(Self.objectAddedEx(handle: 7, storage: 0, format: 0x3801, size: 10, name: "A.JPG") + Self.terminator))
         XCTAssertEqual(rec.count, 1)

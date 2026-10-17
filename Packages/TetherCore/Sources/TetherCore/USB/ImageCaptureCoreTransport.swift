@@ -215,11 +215,30 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
 
     public func open() async throws {
         if isOpen { return }
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            lock.lock(); openContinuation = cont; lock.unlock()
-            device.requestOpenSession()
+        // Left open by an earlier connection in this process: reuse it.
+        if device.hasOpenSession {
+            usbLog.notice("[USB] session already open on \(self.device.name ?? "?", privacy: .public); reusing it")
+            lock.lock(); sessionOpen = true; lock.unlock()
+            return
         }
+        // The completion form answers directly (the delegate callback alone
+        // could be missed), and a timeout turns a silent stall into a message.
+        let result: Error? = await withCheckedContinuation { (cont: CheckedContinuation<Error?, Never>) in
+            let once = ResumeOnce(cont)
+            device.requestOpenSession(options: [:]) { error in once.resume(error) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + Self.openTimeout) {
+                once.resume(PTPError.vendorGate("The camera didn't open a connection. Switch it off and on (or unplug and replug the cable), then connect again."))
+            }
+        }
+        usbLog.notice("[USB] open session: \(result.map { "\($0)" } ?? "ok", privacy: .public)")
+        if let result {
+            if let gate = result as? PTPError { throw gate }
+            throw PTPError.vendorGate(Self.describe(result))
+        }
+        lock.lock(); sessionOpen = true; lock.unlock()
     }
+
+    static let openTimeout: TimeInterval = 15
 
     public func close() async {
         lock.lock(); sessionOpen = false; lock.unlock()
@@ -237,33 +256,38 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
         let tid = transactionID
         let command = PTPUSBContainer.command(request.code, transactionID: tid, parameters: request.parameters).encode()
         let started = Date()
-        return try await withThrowingTaskGroup(of: PTPResponse.self) { group in
-            group.addTask { [self] in
-                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<PTPResponse, Error>) in
-                    device.requestSendPTPCommand(command, outData: request.dataOut) { dataIn, responseData, error in
-                        if let error { cont.resume(throwing: PTPError.malformed("ICC: \(error.localizedDescription)")); return }
-                        do {
-                            let container = try PTPUSBContainer(parsing: responseData)
-                            guard var response = container.asResponse else { throw PTPError.malformed("ICC returned a non-response container") }
-                            response.dataIn = dataIn
-                            response.transactionID = tid
-                            self.health.bytesIn += response.dataIn.count
-                            self.health.bytesOut += command.count + (request.dataOut?.count ?? 0)
-                            self.health.roundTripMillis = Date().timeIntervalSince(started) * 1000
-                            cont.resume(returning: response)
-                        } catch {
-                            cont.resume(throwing: error)
-                        }
-                    }
+        let big = request.expectsLargeData
+        if big { usbLog.notice("[USB] -> 0x\(String(request.code.rawValue, radix: 16), privacy: .public) \(request.parameters.map { String($0, radix: 16) }.joined(separator: ","), privacy: .public)") }
+        // The ICC callback can't be cancelled, so a task-group timeout would
+        // wait on it forever. Resume once, from whichever side comes first.
+        let result: Result<PTPResponse, Error> = await withCheckedContinuation { (cont: CheckedContinuation<Result<PTPResponse, Error>, Never>) in
+            let once = ResumeOnce(cont)
+            device.requestSendPTPCommand(command, outData: request.dataOut) { dataIn, responseData, error in
+                if let error { once.resume(.failure(PTPError.malformed("ICC: \(error.localizedDescription)"))); return }
+                do {
+                    let container = try PTPUSBContainer(parsing: responseData)
+                    guard var response = container.asResponse else { throw PTPError.malformed("ICC returned a non-response container") }
+                    response.dataIn = dataIn
+                    response.transactionID = tid
+                    self.health.bytesIn += response.dataIn.count
+                    self.health.bytesOut += command.count + (request.dataOut?.count ?? 0)
+                    self.health.roundTripMillis = Date().timeIntervalSince(started) * 1000
+                    once.resume(.success(response))
+                } catch {
+                    once.resume(.failure(error))
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(request.timeout * 1_000_000_000))
-                throw PTPError.timeout(op: request.code)
+            DispatchQueue.global().asyncAfter(deadline: .now() + request.timeout) {
+                once.resume(.failure(PTPError.timeout(op: request.code)))
             }
-            let r = try await group.next()!
-            group.cancelAll()
+        }
+        switch result {
+        case .success(let r):
+            if big { usbLog.notice("[USB] <- 0x\(String(request.code.rawValue, radix: 16), privacy: .public) \(r.dataIn.count, privacy: .public) bytes in \(Int(Date().timeIntervalSince(started) * 1000), privacy: .public) ms, rc 0x\(String(r.code.rawValue, radix: 16), privacy: .public)") }
             return r
+        case .failure(let e):
+            usbLog.error("[USB] 0x\(String(request.code.rawValue, radix: 16), privacy: .public) failed: \(String(describing: e), privacy: .public)")
+            throw e
         }
     }
 
@@ -330,7 +354,7 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
 #endif
 
 /// Resumes a continuation at most once (callback vs. timeout).
-final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+final class ResumeOnce<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var cont: CheckedContinuation<T, Never>?
     init(_ cont: CheckedContinuation<T, Never>) { self.cont = cont }

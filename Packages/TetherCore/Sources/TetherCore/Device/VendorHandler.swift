@@ -72,6 +72,8 @@ public protocol VendorHandler: AnyObject, Sendable {
 
     /// Write a star rating back to the camera when it supports it.
     func setRating(handle: UInt32, stars: Int) async throws
+    /// Focus at a point of the live-view image, 0…1 from the top left.
+    func focus(atNormalizedX x: Double, y: Double) async throws
 }
 
 /// Default behaviours shared by every handler.
@@ -79,6 +81,7 @@ public extension VendorHandler {
     var eventPollInterval: TimeInterval { 0.25 }
     func pollEvents() async throws -> [CameraEvent] { [] }
     func setRating(handle: UInt32, stars: Int) async throws { throw PTPError.unsupported("Rating is not supported on this camera.") }
+    func focus(atNormalizedX x: Double, y: Double) async throws { throw PTPError.unsupported("Touch focus is not available on this camera.") }
     func startLiveView(quality: LiveViewQuality) async throws { throw PTPError.unsupported("Live view is not available on this camera.") }
     func stopLiveView() async {}
     func nextLiveViewFrame() async throws -> LiveViewFrame? { nil }
