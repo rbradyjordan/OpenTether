@@ -86,6 +86,7 @@ private struct LibraryToolbar: ToolbarContent {
                 if compact { showInspector = true; model.inspectorOpen = true } else { model.inspectorOpen.toggle() }
             } label: { Label("Inspector", systemImage: model.inspectorOpen ? "sidebar.right" : "info.circle") }
             .disabled(model.inspectedItem == nil && !model.inspectorOpen)
+            .macToolbarTint()
             if compact {
                 Menu {
                     Button { importing = true } label: { Label("Import photos or a folder…", systemImage: "square.and.arrow.down") }

@@ -76,6 +76,9 @@ struct WiFiConnectView: View {
                     Label("This does not look like a camera network. Join the camera's own Wi-Fi first.", systemImage: "info.circle")
                         .font(.subheadline).foregroundStyle(Theme.warning)
                 }
+            } else if model.ssidAuthorization == .unavailable {
+                Text("macOS does not share the network name with apps. Check the Wi-Fi menu in the menu bar: it should show the camera's network.")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
             } else if model.ssidAuthorization == .denied {
                 Text("Location access is off, so the network name is hidden. Open Tether only uses it to recognise camera networks.")
                     .font(.subheadline).foregroundStyle(Theme.textSecondary)
@@ -87,7 +90,7 @@ struct WiFiConnectView: View {
             }
             Text("Open Tether never joins a Wi-Fi network for you.").font(.caption).foregroundStyle(Theme.textSecondary)
             Button {
-                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                MacSupport.openWiFiSettings()
             } label: {
                 Label("Open Wi-Fi Settings", systemImage: "arrow.up.forward.app")
             }

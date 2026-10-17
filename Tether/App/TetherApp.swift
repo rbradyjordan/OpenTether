@@ -36,7 +36,16 @@ struct TetherApp: App {
             }
             // Open Tether is always dark (graphite and steel, like the icon).
             .preferredColorScheme(.dark)
+            #if targetEnvironment(macCatalyst)
+            .frame(minWidth: MacSupport.minimumWindowSize.width, minHeight: MacSupport.minimumWindowSize.height)
+            #endif
         }
+        #if targetEnvironment(macCatalyst)
+        // Wide enough for the side-by-side shoot layout on first launch;
+        // macOS remembers the user's own size after that.
+        .defaultSize(width: MacSupport.defaultWindowSize.width, height: MacSupport.defaultWindowSize.height)
+        .windowResizability(.contentMinSize)
+        #endif
     }
 
     /// Rounded semibold titles, matching the display type role.

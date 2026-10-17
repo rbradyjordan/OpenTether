@@ -20,11 +20,21 @@ enum FolderAccess {
         }
     }
 
+    // The Mac App Sandbox only keeps access across launches for app-scoped
+    // security bookmarks; on iOS a plain bookmark carries the scope.
+    #if targetEnvironment(macCatalyst)
+    private static let bookmarkOptions: URL.BookmarkCreationOptions = [.withSecurityScope]
+    private static let resolveOptions: URL.BookmarkResolutionOptions = [.withSecurityScope]
+    #else
+    private static let bookmarkOptions: URL.BookmarkCreationOptions = []
+    private static let resolveOptions: URL.BookmarkResolutionOptions = []
+    #endif
+
     /// Make a bookmark for a folder returned by the system folder picker.
     static func bookmark(for url: URL) throws -> Data {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        return try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        return try url.bookmarkData(options: bookmarkOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
     }
 
     /// A destination record for a freshly picked folder, recognising a Capture
@@ -35,7 +45,7 @@ enum FolderAccess {
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { throw Failure.notAFolder }
         let entries = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-        let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmark = try url.bookmarkData(options: bookmarkOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
         return StoredFolderDestination(name: url.lastPathComponent, bookmark: bookmark,
                                        kind: StoredFolderDestination.detectKind(entries: entries),
                                        displayPath: displayPath(for: url))
@@ -48,14 +58,14 @@ enum FolderAccess {
         var stale = false
         let url: URL
         do {
-            url = try URL(resolvingBookmarkData: destination.bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+            url = try URL(resolvingBookmarkData: destination.bookmark, options: resolveOptions, relativeTo: nil, bookmarkDataIsStale: &stale)
         } catch {
             throw Failure.unavailable(destination.name)
         }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard FileManager.default.fileExists(atPath: url.path) else { throw Failure.unavailable(destination.name) }
-        if stale, let fresh = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+        if stale, let fresh = try? url.bookmarkData(options: bookmarkOptions, includingResourceValuesForKeys: nil, relativeTo: nil) {
             var updated = destination
             updated.bookmark = fresh
             updated.displayPath = displayPath(for: url)

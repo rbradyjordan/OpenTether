@@ -20,6 +20,7 @@ struct RegularRootView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button { showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                            .macToolbarTint()
                     }
                 }
         } detail: {

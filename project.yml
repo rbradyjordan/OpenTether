@@ -37,6 +37,16 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_ENTITLEMENTS: Tether/Tether.entitlements
+        # Mac Catalyst: same app, same bundle ID (universal purchase), its own
+        # App Sandbox entitlements. iOS settings above are unchanged.
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Tether/Tether-macOS.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        # "Optimize Interface for Mac": native Mac idiom and sizes, not the
+        # iPad layout scaled to 77 %.
+        "TARGETED_DEVICE_FAMILY[sdk=macosx*]": "6"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -92,6 +102,7 @@ targets:
         UIFileSharingEnabled: true
         UIRequiresFullScreen: false
         ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.photography
         # Wi-Fi cameras (GoPro, 360° cameras) only speak plain HTTP on their own network.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

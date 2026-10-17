@@ -78,3 +78,45 @@ struct CommandShortcuts: View {
         return m
     }
 }
+
+/// The shoot screen's keys (iPad keyboards and the Mac): Space fires, 0–5 /
+/// P / X / U rate and flag the frame on screen, ← → step through frames.
+/// Only commands that act in place; anything that opens a sheet stays on
+/// the menus.
+struct ShootShortcuts: View {
+    @Environment(AppModel.self) private var app
+    var model: ShootViewModel
+
+    private static let prefixes = ["rate.", "flag.", "label.", "camera.", "undo", "redo"]
+
+    var body: some View {
+        let ids = model.displayedItem.map { [$0.id] } ?? []
+        let commands = app.commands.available(selection: ids, inShoot: true)
+            .filter { cmd in Self.prefixes.contains { cmd.id.hasPrefix($0) } }
+        return ZStack {
+            ForEach(commands) { cmd in
+                if let parsed = cmd.shortcut.flatMap(ShortcutParser.parse) {
+                    Button(cmd.title) {
+                        app.commands.preferShootSurface = true
+                        app.commands.run(cmd, on: ids)
+                        app.commands.preferShootSurface = false
+                    }
+                    .keyboardShortcut(CommandShortcuts.key(parsed), modifiers: CommandShortcuts.modifiers(parsed))
+                }
+            }
+            Button("Previous frame") { step(-1) }.keyboardShortcut(.leftArrow, modifiers: [])
+            Button("Next frame") { step(1) }.keyboardShortcut(.rightArrow, modifiers: [])
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func step(_ delta: Int) {
+        let ready = model.items.filter { $0.state.isReady }
+        guard let current = model.displayedItem, let i = ready.firstIndex(where: { $0.id == current.id }) else { return }
+        let j = i + delta
+        guard ready.indices.contains(j) else { return }
+        model.select(ready[j].id)
+    }
+}

@@ -261,6 +261,9 @@ struct ForceDark: ViewModifier {
         content
             .environment(\.colorScheme, .dark)
             .preferredColorScheme(.dark)
+            // The dark screens are the presented covers and sheets, where
+            // root-level styles don't reach.
+            .macControlStyle()
     }
 }
 

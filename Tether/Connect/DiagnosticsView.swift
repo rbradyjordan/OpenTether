@@ -158,6 +158,8 @@ struct DiagnosticsView: View {
             battery: { liveBattery },
             powerSource: {
                 await MainActor.run {
+                    // A Mac powers itself; the hint is about a phone's battery.
+                    if MacSupport.isMac { return nil }
                     UIDevice.current.isBatteryMonitoringEnabled = true
                     switch UIDevice.current.batteryState {
                     case .charging, .full: return "iPhone is being charged over the cable"

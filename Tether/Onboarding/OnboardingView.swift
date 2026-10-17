@@ -63,10 +63,13 @@ struct OnboardingView: View {
             PermissionRow(title: "Save to Photos", symbol: "photo.on.rectangle", done: photosStatus == .authorized || photosStatus == .limited) {
                 Task { photosStatus = await PHPhotoLibrary.requestAuthorization(for: .addOnly) }
             }
-            PermissionRow(title: "Wi-Fi name", symbol: "wifi", done: ssidState == .authorized) {
-                Task {
-                    await app.services.ssid.requestAuthorization()
-                    ssidState = await app.services.ssid.authorizationState
+            // The Mac never shares the Wi-Fi name with apps, so there is nothing to ask.
+            if ssidState != .unavailable {
+                PermissionRow(title: "Wi-Fi name", symbol: "wifi", done: ssidState == .authorized) {
+                    Task {
+                        await app.services.ssid.requestAuthorization()
+                        ssidState = await app.services.ssid.authorizationState
+                    }
                 }
             }
         }

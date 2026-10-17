@@ -47,6 +47,7 @@ struct ShootView: View {
                 }
             }
             .background(TetherColor.surface0)
+            .background(ShootShortcuts(model: model))
             .toolbar(.hidden, for: .navigationBar)
             .toast($model.toast) { model.showNewest() }
             .sheet(item: $model.sheet) { sheet in sheetView(sheet) }
