@@ -48,6 +48,8 @@ public enum CanonCodes {
         public static let touchAfPosition = PTPOperationCode(0x915B)
         public static let driveLens = PTPOperationCode(0x9155)
         public static let afCancel = PTPOperationCode(0x9160)
+        /// Turns on OLCInfoChanged events (libgphoto2 sends mask 0x1FFF when preparing to capture).
+        public static let setRequestOLCInfoGroup = PTPOperationCode(0x913D)
         public static let getPartialObjectEx64 = PTPOperationCode(0x9187) // VERIFY: libgphoto2 PTP_OC_CANON_EOS_GetPartialObjectEx64
     }
 
@@ -60,6 +62,8 @@ public enum CanonCodes {
         public static let driveMode: UInt32 = 0xD106
         public static let meteringMode: UInt32 = 0xD107
         public static let focusMode: UInt32 = 0xD108
+        /// Layout version of OLCInfoChanged records (libgphoto2 PTP_DPC_CANON_EOS_OLCInfoVersion).
+        public static let olcInfoVersion: UInt32 = 0xD199
         public static let whiteBalance: UInt32 = 0xD109
         public static let colorTemperature: UInt32 = 0xD10A
         public static let pictureStyle: UInt32 = 0xD110
@@ -108,6 +112,8 @@ public enum CanonCodes {
         public static let bulbExposureTime: UInt32 = 0xC194
         public static let recordingTime: UInt32 = 0xC195
         public static let afResult: UInt32 = 0xC1A3
+        /// On-screen info changes, incl. the live AF state (libgphoto2 PTP_EC_CANON_EOS_OLCInfoChanged).
+        public static let olcInfoChanged: UInt32 = 0xC1A5
         public static let objectAddedEx64: UInt32 = 0xC1A7 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedEx64
         public static let objectAddedUnknown64: UInt32 = 0xC1A8 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedUnknown64
         public static let requestObjectTransfer64: UInt32 = 0xC1A9
@@ -145,6 +151,28 @@ public enum CanonCodes {
     public static let focusModeOneShot: UInt32 = 0
     public static let focusModeServo: UInt32 = 1
     public static let focusModeAIFocus: UInt32 = 2
+
+    /// OLCInfoChanged field sizes per layout version, for mask bits 0x1…0x1000
+    /// (libgphoto2 ptp-pack.c `olcsizes`; 0x14 confirmed there on R8, R10, R5 Mark II).
+    public static let olcSizes: [[Int]] = [
+        [], [], [], [], [], [], [],
+        [2, 6, 5, 4, 4, 6, 7, 4, 6, 5, 5, 8, 1],  // 0x07
+        [2, 6, 5, 4, 4, 6, 7, 4, 6, 7, 7, 8, 1],  // 0x08
+        [2, 6, 5, 4, 4, 6, 7, 4, 6, 7, 7, 8, 1],  // 0x09
+        [2, 6, 5, 4, 4, 6, 7, 4, 6, 7, 7, 8, 1],  // 0x0A
+        [2, 6, 5, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x0B
+        [2, 6, 5, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x0C
+        [2, 6, 5, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x0D
+        [2, 6, 5, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x0E
+        [2, 7, 6, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x0F
+        [2, 7, 6, 4, 4, 6, 8, 4, 6, 5, 5, 9, 1],  // 0x10
+        [2, 7, 6, 6, 4, 6, 8, 4, 6, 5, 5, 9, 8],  // 0x11 EOS R
+        [2, 7, 9, 6, 4, 6, 8, 5, 7, 5, 5, 9, 8],  // 0x12
+        [2, 7, 9, 7, 4, 6, 8, 5, 7, 5, 5, 9, 8],  // 0x13 R5, R5 C
+        [2, 9, 9, 7, 4, 6, 8, 5, 7, 5, 5, 9, 8],  // 0x14 R8, R10, R5 Mark II
+    ]
+    /// OLC field carrying the AF state.
+    public static let olcFocusInfoMask: UInt16 = 0x0100
 
     /// GetViewFinderData record types.
     public static let viewFinderJPEGRecord: UInt32 = 1
@@ -407,6 +435,10 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         }
         try await engine.run(CanonCodes.Op.setRemoteMode, [1])
         if info.supports(CanonCodes.Op.setEventMode) { try await engine.run(CanonCodes.Op.setEventMode, [1]) }
+        // OLC events carry the live AF state touch focus waits on.
+        if info.supports(CanonCodes.Op.setRequestOLCInfoGroup) {
+            _ = try? await engine.execute(PTPRequest(CanonCodes.Op.setRequestOLCInfoGroup, parameters: [0x1FFF]))
+        }
         // The first dump carries every property and its allowed values.
         _ = try await fetchEvents()
     }
@@ -539,13 +571,18 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
                 if let obj = Self.transferRequest(rec, hasName: rec.type != CanonCodes.Event.requestObjectTransfer64LFN) {
                     out.append(.objectAdded(obj))
                 }
+            case CanonCodes.Event.olcInfoChanged:
+                if let state = Self.olcFocusState(rec, version: values[CanonCodes.Prop.olcInfoVersion] ?? 0) {
+                    noteAFState(state)
+                }
             case CanonCodes.Event.objectRemoved:
                 if let h = rec.u32(at: 8) { out.append(.objectRemoved(handle: h)) }
             case CanonCodes.Event.propValueChanged:
                 guard let prop = rec.u32(at: 8) else { continue }
                 if rec.bytes.count >= 16, let v = rec.u32(at: 12) { values[prop] = v }
-                if prop == CanonCodes.Prop.focusInfoEx, let space = Self.afCoordinateSpace(fromFocusInfoRecord: rec) {
-                    afCoordinateSpace = space
+                if prop == CanonCodes.Prop.focusInfoEx {
+                    if let space = Self.afCoordinateSpace(fromFocusInfoRecord: rec) { afCoordinateSpace = space }
+                    if Self.focusInfoHasFocusedPoints(rec) { focusInfoReportedFocus = true }
                 }
                 out.append(.propertyChanged(CanonCodes.property(for: prop)))
             case CanonCodes.Event.availListChanged:
@@ -781,47 +818,179 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     }
 
     /// Touch AF: move the AF point to the tapped spot, then focus there.
-    public func focus(atNormalizedX nx: Double, y ny: Double) async throws {
+    // MARK: Touch AF
+    //
+    // How Canon's own software handles AF: EOS Utility has AF ON / OFF
+    // buttons and AF "continues until you click OFF"; Camera Connect's AF
+    // button is a half-press. Servo never "finishes" (bodies don't even
+    // confirm focus in Servo), so nothing here guesses with a timer:
+    //  - a tap focuses once and stops on the camera's own lock / fail
+    //    report (OLCInfoChanged focus info; FocusInfoEx in-focus points as
+    //    a fallback). In Servo / AI Focus the tap runs in One Shot so there
+    //    is a lock to wait for; the user's mode comes back as soon as it lands.
+    //  - press and hold tracks in the user's own mode (AF ON) until the
+    //    finger lifts (AF OFF), like EOS Utility.
+
+    /// AF state from OLC focus info, latched per touch: libgphoto2 traces
+    /// show success as 00-01 → 01-01 → 00-00 (R8 skips straight from 01-01
+    /// to 00-00) and failure as 00-01 → 02-01 → 02-00 → 00-00 (R5 Mark II).
+    public enum AFState: Equatable, Sendable { case idle, running, focused, failed }
+
+    private var afOutcome: FocusResult?
+    private var afSawRunning = false
+    private var focusInfoReportedFocus = false
+    private var trackingFocus = false
+
+    private func noteAFState(_ state: AFState) {
+        switch state {
+        case .running: afSawRunning = true
+        case .focused: if afOutcome == nil { afOutcome = .focused }
+        case .failed: if afOutcome == nil { afOutcome = .failed }
+        case .idle: break
+        }
+    }
+
+    /// The body reports AF state through OLC events (needs the request op
+    /// and a known layout version).
+    var olcFocusAvailable: Bool {
+        info.supports(CanonCodes.Op.setRequestOLCInfoGroup) && (values[CanonCodes.Prop.olcInfoVersion] ?? 0) >= 7
+    }
+
+    public func focus(atNormalizedX nx: Double, y ny: Double) async throws -> FocusResult {
         guard capabilities.contains(.touchAutofocus) else { throw PTPError.unsupported("Touch focus is not available on this camera.") }
-        // Servo and AI Focus never "finish": they drive the lens until told
-        // to stop, and no wait fits every lens and scene. One Shot stops by
-        // itself the moment it locks, so a touch runs in One Shot and the
-        // user's mode comes back before the shutter fires.
+        if trackingFocus { await stopTrackingFocus() }
         await useOneShotForTouchAF()
+        do {
+            try await moveAFPoint(nx, ny)
+            guard info.supports(CanonCodes.Op.doAf) else {
+                await restoreFocusModeAfterTouch()
+                return .unconfirmed
+            }
+            let result = try await runAFUntilReported()
+            canonLog("touch AF: \(result)")
+            // Still tracking (the switch to One Shot was refused): stop it now
+            // that the camera has had its say, so the lens doesn't keep hunting.
+            if focusModeBeforeTouch == nil, tracksContinuously, info.supports(CanonCodes.Op.afCancel) {
+                _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
+            }
+            await restoreFocusModeAfterTouch()
+            return result
+        } catch {
+            await restoreFocusModeAfterTouch()
+            throw error
+        }
+    }
+
+    /// AF ON at a point, in the user's own AF mode, until `stopTrackingFocus`.
+    public func startTrackingFocus(atNormalizedX nx: Double, y ny: Double) async throws {
+        guard capabilities.contains(.touchAutofocus), info.supports(CanonCodes.Op.doAf) else {
+            throw PTPError.unsupported("Touch focus is not available on this camera.")
+        }
+        await restoreFocusModeAfterTouch()
+        try await moveAFPoint(nx, ny)
+        try await engine.run(CanonCodes.Op.doAf, timeout: 10)
+        trackingFocus = true
+        canonLog("touch AF: tracking")
+    }
+
+    /// AF OFF.
+    public func stopTrackingFocus() async {
+        guard trackingFocus else { return }
+        trackingFocus = false
+        if info.supports(CanonCodes.Op.afCancel) {
+            _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
+        }
+        canonLog("touch AF: tracking stopped")
+    }
+
+    private var tracksContinuously: Bool {
+        let mode = values[CanonCodes.Prop.focusMode]
+        return mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus
+    }
+
+    private func moveAFPoint(_ nx: Double, _ ny: Double) async throws {
         // VERIFY: fallback space when the body has not sent FocusInfoEx yet
         // (EOS R full-sensor AF coordinates).
         let space = afCoordinateSpace ?? (8192, 5464)
         let x = UInt32(max(0, min(1, nx)) * Double(space.width - 1))
         let y = UInt32(max(0, min(1, ny)) * Double(space.height - 1))
         try await engine.run(CanonCodes.Op.touchAfPosition, [CanonCodes.touchAfType, x, y])
-        guard info.supports(CanonCodes.Op.doAf) else { return }
+    }
+
+    /// DoAf, then poll until the body says focused or failed. The limit only
+    /// covers a body that never reports; it doesn't decide focus.
+    private func runAFUntilReported() async throws -> FocusResult {
+        if let events = try? await fetchEvents() { pending.append(contentsOf: events) }   // stale state out
+        afOutcome = nil
+        afSawRunning = false
+        focusInfoReportedFocus = false
         try await engine.run(CanonCodes.Op.doAf, timeout: 10)
-        // Keep the event queue drained while the lens moves (the UI shows
-        // the box pulsing until this returns). Nothing is cancelled.
+        let olc = olcFocusAvailable
+        let limit = olc ? Self.touchAfReportTimeout : Self.touchAfFallbackTime
         let started = Date()
-        while Date().timeIntervalSince(started) < Self.touchAfIndicatorTime {
-            try? await Task.sleep(nanoseconds: 200_000_000)
+        while Date().timeIntervalSince(started) < limit {
             if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
+            if let outcome = afOutcome { return outcome }
+            // Without OLC, FocusInfoEx listing in-focus points is libgphoto2's cue.
+            if !olc, focusInfoReportedFocus { return .focused }
+            try? await Task.sleep(nanoseconds: 80_000_000)
+        }
+        return .unconfirmed
+    }
+
+    /// Longest wait for the body's AF report (slow lenses in low light take
+    /// several seconds; libgphoto2 allows up to 8 s for a half-press).
+    static let touchAfReportTimeout: TimeInterval = 8
+    /// Bodies with no AF report: how long to show "focusing".
+    static let touchAfFallbackTime: TimeInterval = 2.5
+
+    /// OLC focus info: byte 4 is the result (1 focused, 2 failed), byte 5 is
+    /// "AF running" (libgphoto2 ptp-pack.c, mask 0x0100).
+    static func olcFocusState(_ rec: CanonEventRecord, version: UInt32) -> AFState? {
+        guard version >= 7 else { return nil }
+        let row = CanonCodes.olcSizes[min(Int(version), CanonCodes.olcSizes.count - 1)]
+        guard row.count == 13, let mask = rec.u16(at: 12), mask & CanonCodes.olcFocusInfoMask != 0 else { return nil }
+        var offset = 16
+        for bit in 0 ..< 8 where mask & (1 << bit) != 0 { offset += row[bit] }
+        guard offset + 5 < rec.bytes.count else { return nil }
+        let result = rec.bytes[offset + 4], running = rec.bytes[offset + 5]
+        switch result {
+        case 1: return .focused
+        case 2: return .failed
+        default: return running != 0 ? .running : .idle
         }
     }
 
-    /// How long the app shows "focusing" after a touch. The camera decides
-    /// when it is in focus; this only paces the indicator.
-    static let touchAfIndicatorTime: TimeInterval = 1.0
+    /// FocusInfoEx (blob at record byte 12): after the point table comes a
+    /// bitmask of the points AF settled on; libgphoto2 reads "none" as not
+    /// in focus.
+    static func focusInfoHasFocusedPoints(_ rec: CanonEventRecord) -> Bool {
+        let base = 12
+        guard let inStruct = rec.u16(at: base + 8), let inUse = rec.u16(at: base + 10),
+              inStruct > 0, inUse > 0, inUse <= inStruct else { return false }
+        let maskStart = base + 20 + Int(inStruct) * 8
+        for i in 0 ..< Int(inUse) {
+            let byte = maskStart + i / 8
+            guard byte < rec.bytes.count else { return false }
+            if rec.bytes[byte] & UInt8(1 << (i % 8)) != 0 { return true }
+        }
+        return false
+    }
 
-    /// The user's AF mode while a touch has the body in One Shot.
+    /// The user's AF mode while a tap has the body in One Shot.
     private var focusModeBeforeTouch: UInt32?
 
     private func useOneShotForTouchAF() async {
         guard let mode = values[CanonCodes.Prop.focusMode],
-              mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus else { return }
+              mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus,
+              capabilities.contains(.propertyControl) else { return }
         do {
             try await setEOSProperty(CanonCodes.Prop.focusMode, CanonCodes.focusModeOneShot)
             if focusModeBeforeTouch == nil { focusModeBeforeTouch = mode }
-            canonLog("touch AF: One Shot for the touch (was \(mode))")
+            canonLog("touch AF: One Shot for the tap (was \(mode))")
         } catch {
-            // Body won't switch (lens AF/MF switch, mode locked): let it track
-            // rather than stop it before it focuses.
+            // Body won't switch (mode locked): the tap runs in Servo and is
+            // stopped once the camera has reported.
             canonLog("touch AF: couldn't switch to One Shot: \(error)")
         }
     }
@@ -841,6 +1010,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     public func stopLiveView() async {
         guard liveViewOn else { return }
         liveViewOn = false
+        await stopTrackingFocus()
         await restoreFocusModeAfterTouch()
         _ = try? await setEOSProperty(CanonCodes.Prop.evfOutputDevice, CanonCodes.Prop.evfOutputOff)
     }

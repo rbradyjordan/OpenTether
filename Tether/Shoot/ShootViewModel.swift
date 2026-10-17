@@ -222,22 +222,55 @@ final class ShootViewModel {
     private(set) var focusPoint: CGPoint?
     private(set) var focusPointID = 0
 
-    /// True while the camera is focusing on the last tap.
-    private(set) var isFocusing = false
+    /// What the AF box shows: the camera's own verdict on the last touch.
+    enum FocusIndicator: Equatable { case focusing, focused, failed, unconfirmed, tracking }
+    private(set) var focusIndicator: FocusIndicator = .focusing
 
+    /// Tap: focus once; the box turns green or red on the camera's report.
     func focus(at point: CGPoint) {
         guard canTouchFocus, liveViewActive, isLive else { return }
-        focusPoint = point
-        focusPointID += 1
-        isFocusing = true
-        TetherHaptic.rate()
-        let id = focusPointID
+        let id = beginFocusBox(at: point, .focusing)
         Task {
-            do { try await session.focus(atNormalizedX: point.x, y: point.y) } catch {
+            do {
+                let result = try await session.focus(atNormalizedX: point.x, y: point.y)
+                guard id == focusPointID else { return }
+                switch result {
+                case .focused: focusIndicator = .focused; TetherHaptic.rate()
+                case .failed: focusIndicator = .failed
+                case .unconfirmed: focusIndicator = .unconfirmed
+                }
+            } catch {
+                if id == focusPointID { focusIndicator = .unconfirmed }
                 toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
             }
-            if id == focusPointID { isFocusing = false }
         }
+    }
+
+    /// Press and hold: AF tracks in the camera's own mode until the finger lifts.
+    func startTrackingFocus(at point: CGPoint) {
+        guard canTouchFocus, liveViewActive, isLive else { return }
+        let id = beginFocusBox(at: point, .tracking)
+        Task {
+            do { try await session.startTrackingFocus(atNormalizedX: point.x, y: point.y) } catch {
+                if id == focusPointID { focusIndicator = .unconfirmed }
+                toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    func stopTrackingFocus() {
+        Task {
+            await session.stopTrackingFocus()
+            if focusIndicator == .tracking { focusIndicator = .unconfirmed }
+        }
+    }
+
+    private func beginFocusBox(at point: CGPoint, _ indicator: FocusIndicator) -> Int {
+        focusPoint = point
+        focusPointID += 1
+        focusIndicator = indicator
+        TetherHaptic.rate()
+        return focusPointID
     }
 
     func select(_ id: String?) {

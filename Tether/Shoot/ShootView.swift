@@ -81,8 +81,10 @@ struct ShootView: View {
         ZStack(alignment: .bottom) {
             if (model.liveViewActive || model.liveViewStarting), model.canLiveView {
                 LiveViewView(image: model.liveViewImage, focusPoint: model.focusPoint, focusPointID: model.focusPointID,
-                             isFocusing: model.isFocusing, isStarting: model.liveViewStarting,
-                             onFocus: model.canTouchFocus ? { model.focus(at: $0) } : nil)
+                             focusIndicator: model.focusIndicator, isStarting: model.liveViewStarting,
+                             onFocus: model.canTouchFocus ? { model.focus(at: $0) } : nil,
+                             onHoldStart: model.canTouchFocus ? { model.startTrackingFocus(at: $0) } : nil,
+                             onHoldEnd: { model.stopTrackingFocus() })
             } else {
                 EditCanvasView(model: model)
             }

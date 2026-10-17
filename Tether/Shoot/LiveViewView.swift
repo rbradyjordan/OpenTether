@@ -6,12 +6,22 @@ struct LiveViewView: View {
     /// Last focus tap (0…1 of the frame) and a counter that restarts the box animation.
     var focusPoint: CGPoint? = nil
     var focusPointID = 0
-    /// The camera is still focusing on the last tap: the box pulses until it's done.
-    var isFocusing = false
+    /// The camera's verdict on the last touch, shown on the AF box.
+    var focusIndicator: ShootViewModel.FocusIndicator = .focusing
     /// Live view was asked for and the first frame hasn't arrived yet.
     var isStarting = false
     /// Set when the body supports touch AF; called with 0…1 of the frame.
     var onFocus: ((CGPoint) -> Void)? = nil
+    /// Press and hold: AF tracks until the finger lifts.
+    var onHoldStart: ((CGPoint) -> Void)? = nil
+    var onHoldEnd: (() -> Void)? = nil
+
+    @State private var touchStart: Date?
+    @State private var holding = false
+    @State private var holdTask: Task<Void, Never>?
+
+    /// How long a press must last to count as hold-to-track.
+    private static let holdDelay: Double = 0.45
 
     var body: some View {
         GeometryReader { geo in
@@ -21,7 +31,7 @@ struct LiveViewView: View {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
                     if let focusPoint {
                         let frame = Self.fittedRect(image.size, in: geo.size)
-                        FocusBox(isFocusing: isFocusing)
+                        FocusBox(indicator: focusIndicator)
                             .id(focusPointID)
                             .position(x: frame.minX + focusPoint.x * frame.width,
                                       y: frame.minY + focusPoint.y * frame.height)
@@ -37,7 +47,8 @@ struct LiveViewView: View {
                         TonePill(text: "LIVE", tone: .danger, systemImage: "circle.fill")
                         Spacer()
                         if onFocus != nil, image != nil {
-                            Text("Tap to focus").font(TetherFont.caption).foregroundStyle(TetherColor.ink1)
+                            Text(holding ? "Tracking, lift to stop" : "Tap to focus · hold to track")
+                                .font(TetherFont.caption).foregroundStyle(TetherColor.ink1)
                         }
                     }
                     .padding(TetherSpace.m)
@@ -47,15 +58,43 @@ struct LiveViewView: View {
                 .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
-            .onTapGesture(coordinateSpace: .local) { location in
-                guard let onFocus, let image else { return }
-                let frame = Self.fittedRect(image.size, in: geo.size)
-                guard frame.contains(location), frame.width > 0, frame.height > 0 else { return }
-                onFocus(CGPoint(x: (location.x - frame.minX) / frame.width, y: (location.y - frame.minY) / frame.height))
-            }
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { value in
+                        guard touchStart == nil else { return }
+                        touchStart = Date()
+                        guard let point = normalized(value.startLocation, in: geo.size), let onHoldStart else { return }
+                        holdTask = Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: UInt64(Self.holdDelay * 1_000_000_000))
+                            guard !Task.isCancelled, touchStart != nil else { return }
+                            holding = true
+                            onHoldStart(point)
+                        }
+                    }
+                    .onEnded { value in
+                        holdTask?.cancel()
+                        holdTask = nil
+                        touchStart = nil
+                        if holding {
+                            holding = false
+                            onHoldEnd?()
+                        } else if let point = normalized(value.startLocation, in: geo.size) {
+                            onFocus?(point)
+                        }
+                    },
+                including: onFocus == nil ? .subviews : .all
+            )
         }
         .accessibilityLabel("Live view from the camera")
-        .accessibilityHint(onFocus == nil ? "" : "Tap a point to focus there")
+        .accessibilityHint(onFocus == nil ? "" : "Tap a point to focus there; touch and hold to keep focusing")
+    }
+
+    /// 0…1 of the frame, or nil outside the picture.
+    private func normalized(_ location: CGPoint, in size: CGSize) -> CGPoint? {
+        guard let image else { return nil }
+        let frame = Self.fittedRect(image.size, in: size)
+        guard frame.contains(location), frame.width > 0, frame.height > 0 else { return nil }
+        return CGPoint(x: (location.x - frame.minX) / frame.width, y: (location.y - frame.minY) / frame.height)
     }
 
     /// The aspect-fit rect of an image of `size` inside `container`.
@@ -67,30 +106,43 @@ struct LiveViewView: View {
     }
 }
 
-/// The AF box: lands slightly large, pulses while the camera focuses,
-/// then fades away once it's done.
+/// The AF box, in Canon's own colours: pulses while the camera works,
+/// green when it reports focus, red when AF fails, then fades. While
+/// tracking (press and hold) it stays up.
 private struct FocusBox: View {
-    var isFocusing: Bool
+    var indicator: ShootViewModel.FocusIndicator
     @State private var settled = false
     @State private var pulse = false
     @State private var gone = false
 
+    private var color: Color {
+        switch indicator {
+        case .focused: return TetherColor.ok
+        case .failed: return TetherColor.danger
+        default: return TetherColor.accent
+        }
+    }
+
+    private var pulsing: Bool { indicator == .focusing || indicator == .tracking }
+
     var body: some View {
         RoundedRectangle(cornerRadius: 6)
-            .stroke(TetherColor.accent, lineWidth: 2)
+            .stroke(color, lineWidth: indicator == .focused ? 3 : 2)
             .frame(width: 72, height: 72)
-            .scaleEffect(settled ? 1 : 1.35)
-            .opacity(gone ? 0 : (isFocusing && pulse ? 0.45 : 1))
+            .scaleEffect(settled ? (indicator == .focused ? 0.92 : 1) : 1.35)
+            .opacity(gone ? 0 : (pulsing && pulse ? 0.45 : 1))
             .shadow(color: .black.opacity(0.4), radius: 3)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: indicator)
             .allowsHitTesting(false)
             .onAppear {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { settled = true }
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { pulse = true }
             }
-            .task(id: isFocusing) {
-                guard !isFocusing else { return }
-                try? await Task.sleep(nanoseconds: 600_000_000)
+            .task(id: indicator) {
+                guard !pulsing else { gone = false; return }
+                try? await Task.sleep(nanoseconds: indicator == .unconfirmed ? 400_000_000 : 900_000_000)
                 withAnimation(.easeOut(duration: 0.35)) { gone = true }
             }
+            .accessibilityHidden(true)
     }
 }

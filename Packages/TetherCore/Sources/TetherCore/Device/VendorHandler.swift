@@ -72,8 +72,19 @@ public protocol VendorHandler: AnyObject, Sendable {
 
     /// Write a star rating back to the camera when it supports it.
     func setRating(handle: UInt32, stars: Int) async throws
-    /// Focus at a point of the live-view image, 0…1 from the top left.
-    func focus(atNormalizedX x: Double, y: Double) async throws
+    /// Focus once at a point of the live-view image, 0…1 from the top left,
+    /// returning what the camera reported.
+    func focus(atNormalizedX x: Double, y: Double) async throws -> FocusResult
+    /// AF ON at a point until `stopTrackingFocus` (AF OFF), in the camera's own AF mode.
+    func startTrackingFocus(atNormalizedX x: Double, y: Double) async throws
+    func stopTrackingFocus() async
+}
+
+/// Outcome of a touch focus, as the camera reported it.
+public enum FocusResult: String, Sendable, Equatable {
+    case focused, failed
+    /// The camera gave no report (older bodies, or it never answered).
+    case unconfirmed
 }
 
 /// Default behaviours shared by every handler.
@@ -81,7 +92,9 @@ public extension VendorHandler {
     var eventPollInterval: TimeInterval { 0.25 }
     func pollEvents() async throws -> [CameraEvent] { [] }
     func setRating(handle: UInt32, stars: Int) async throws { throw PTPError.unsupported("Rating is not supported on this camera.") }
-    func focus(atNormalizedX x: Double, y: Double) async throws { throw PTPError.unsupported("Touch focus is not available on this camera.") }
+    func focus(atNormalizedX x: Double, y: Double) async throws -> FocusResult { throw PTPError.unsupported("Touch focus is not available on this camera.") }
+    func startTrackingFocus(atNormalizedX x: Double, y: Double) async throws { throw PTPError.unsupported("Touch focus is not available on this camera.") }
+    func stopTrackingFocus() async {}
     func startLiveView(quality: LiveViewQuality) async throws { throw PTPError.unsupported("Live view is not available on this camera.") }
     func stopLiveView() async {}
     func nextLiveViewFrame() async throws -> LiveViewFrame? { nil }
