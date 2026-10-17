@@ -1,4 +1,13 @@
 import Foundation
+#if canImport(os)
+import os
+
+private let canonLogger = Logger(subsystem: "com.bradyjordan.tether", category: "canon")
+/// Console trail for Canon transfers (filter Xcode's console on "[Canon]").
+func canonLog(_ message: String) { canonLogger.notice("[Canon] \(message, privacy: .public)") }
+#else
+func canonLog(_ message: String) {}
+#endif
 
 /// Every Canon EOS constant lives here so a wrong one is fixed in one place.
 /// Names follow libgphoto2 `ptp.h` (`PTP_OC_CANON_EOS_*`, `PTP_DPC_CANON_EOS_*`,
@@ -101,17 +110,18 @@ public enum CanonCodes {
         public static let afResult: UInt32 = 0xC1A3
         public static let objectAddedEx64: UInt32 = 0xC1A7 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedEx64
         public static let objectAddedUnknown64: UInt32 = 0xC1A8 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_ObjectAddedUnknown64
-        public static let requestObjectTransfer64: UInt32 = 0xC1A9 // VERIFY: libgphoto2 PTP_EC_CANON_EOS_RequestObjectTransfer64
+        public static let requestObjectTransfer64: UInt32 = 0xC1A9
+        /// Newer bodies (R-series): same as above with no filename. libgphoto2 PTP_EC_CANON_EOS_RequestObjectTransfer64LFN.
+        public static let requestObjectTransfer64LFN: UInt32 = 0xC1B8
     }
 
-    /// Offsets inside a RequestObjectTransfer record (libgphoto2 `PTP_ece_OI_*`).
-    /// The 64-bit variant widens the size, pushing the name back by 4. VERIFY.
+    /// Offsets inside a RequestObjectTransfer record (libgphoto2 `PTP_cee_OI_*`);
+    /// the 64-bit variant uses the same ones, the LFN variant has no name.
     public enum TransferRequestLayout {
         public static let handle = 8
         public static let format = 0x0C
         public static let size = 0x14
         public static let name = 0x1C
-        public static let name64 = 0x20
     }
 
     /// Offsets inside an ObjectAddedEx record (from the record start).
@@ -516,9 +526,10 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
                     // transfer request; only one of the two is downloaded.
                     if obj.inSDRAM || destination == .card { out.append(.objectAdded(obj)) }
                 }
-            case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64:
-                // A capture waiting in the body's memory; it stays busy until we take it.
-                if let obj = Self.transferRequest(rec, is64: rec.type == CanonCodes.Event.requestObjectTransfer64) {
+            case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64, CanonCodes.Event.requestObjectTransfer64LFN:
+                // A capture waiting in the body's memory; it holds the card
+                // and stays busy until we take it.
+                if let obj = Self.transferRequest(rec, hasName: rec.type != CanonCodes.Event.requestObjectTransfer64LFN) {
                     out.append(.objectAdded(obj))
                 }
             case CanonCodes.Event.objectRemoved:
@@ -589,14 +600,26 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         return NewObject(handle: handle, storageID: storage, info: info, inSDRAM: inRAM)
     }
 
-    static func transferRequest(_ rec: CanonEventRecord, is64: Bool) -> NewObject? {
+    static func transferRequest(_ rec: CanonEventRecord, hasName: Bool) -> NewObject? {
         typealias L = CanonCodes.TransferRequestLayout
         guard let handle = rec.u32(at: L.handle), handle != 0 else { return nil }
         let format = PTPObjectFormat(rec.u16(at: L.format) ?? 0)
         let size = rec.u32(at: L.size) ?? 0
-        let name = rec.cString(at: is64 ? L.name64 : L.name)
+        var name = hasName ? rec.cString(at: L.name) : ""
+        if name.isEmpty { name = String(format: "IMG_%04X.%@", handle & 0xFFFF, Self.fileExtension(for: format)) }
         let info = PTPObjectInfo(storageID: 0, objectFormat: format, objectCompressedSize: size, parentObject: 0, filename: name)
         return NewObject(handle: handle, storageID: 0, info: info, inSDRAM: true)
+    }
+
+    /// Extension for a nameless capture, from its object format (libgphoto2 PTP_OFC_CANON_*).
+    static func fileExtension(for format: PTPObjectFormat) -> String {
+        switch format.rawValue {
+        case 0xB108: return "CR3"
+        case 0xB101, 0xB103: return "CR2"
+        case 0xB10A, 0xB110: return "HIF" // VERIFY: Canon HEIF format code
+        case 0x3801: return "JPG"
+        default: return "JPG"
+        }
     }
 
     public func translate(_ event: PTPEvent) async -> CameraEvent? {
@@ -604,7 +627,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         case CanonCodes.Event.requestGetEvent:
             // The camera asks us to poll; the next pollEvents does.
             return nil
-        case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64:
+        case CanonCodes.Event.requestObjectTransfer, CanonCodes.Event.requestObjectTransfer64, CanonCodes.Event.requestObjectTransfer64LFN:
             return event.parameters.first.map { .objectAdded(NewObject(handle: $0, inSDRAM: true)) }
         case CanonCodes.Event.objectAddedEx, CanonCodes.Event.objectAddedEx64:
             guard destination == .card else { return nil }
@@ -689,26 +712,49 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
             }
         }
         guard let infoOut = oi, infoOut.objectCompressedSize > 0 else {
+            await finishTransfer(object.handle)
             throw PTPError.malformed("The camera didn't say how big capture \(object.handle) is.")
         }
         let total = infoOut.objectCompressedSize
+        canonLog("transfer \(String(object.handle, radix: 16)) \(infoOut.filename) \(total) bytes")
+        do {
+            let data = try await downloadFromMemory(object.handle, total: total, progress: progress)
+            await finishTransfer(object.handle)
+            canonLog("transfer \(String(object.handle, radix: 16)) done")
+            return (infoOut, data)
+        } catch {
+            // Even a failed transfer must be closed, or the body holds the
+            // card and stays busy until it is switched off.
+            canonLog("transfer \(String(object.handle, radix: 16)) failed: \(error)")
+            await finishTransfer(object.handle)
+            throw error
+        }
+    }
+
+    /// 1 MB GetPartialObject reads, as libgphoto2 does: "the EOS R does not
+    /// like 5MB", and Canon's own 0x9107 is suspected of crashing newer bodies.
+    /// 0x9107 is kept only for bodies without the standard operation.
+    private func downloadFromMemory(_ handle: UInt32, total: UInt32, progress: (@Sendable (Int, Int?) -> Void)?) async throws -> Data {
+        let op: PTPOperationCode = info.supports(.getPartialObject) ? .getPartialObject : CanonCodes.Op.getPartialObjectEx
+        let chunk: UInt32 = 1 << 20
         var out = Data()
         out.reserveCapacity(Int(total))
         var offset: UInt32 = 0
-        let chunk = await engine.partialChunkSize
         while offset < total {
             try Task.checkCancellation()
             let want = min(chunk, total - offset)
-            let r = try await engine.run(CanonCodes.Op.getPartialObjectEx, [object.handle, offset, want], expectsLargeData: true, timeout: 60)
-            if r.dataIn.isEmpty { throw PTPError.malformed("GetPartialObjectEx returned no data at \(offset)") }
+            let r = try await engine.run(op, [handle, offset, want], expectsLargeData: true, timeout: 20)
+            if r.dataIn.isEmpty { throw PTPError.malformed("The camera sent no data at byte \(offset) of \(total).") }
             out.append(r.dataIn)
             offset += UInt32(r.dataIn.count)
             progress?(out.count, Int(total))
         }
-        if info.supports(CanonCodes.Op.transferComplete) {
-            try await engine.run(CanonCodes.Op.transferComplete, [object.handle])
-        }
-        return (infoOut, out)
+        return out
+    }
+
+    private func finishTransfer(_ handle: UInt32) async {
+        guard info.supports(CanonCodes.Op.transferComplete) else { return }
+        _ = try? await engine.execute(PTPRequest(CanonCodes.Op.transferComplete, parameters: [handle], timeout: 5))
     }
 
     // MARK: Live view

@@ -63,18 +63,23 @@ struct LiveViewView: View {
     }
 }
 
-/// The AF box: lands slightly large, settles, then fades back.
+/// The AF box: lands slightly large, settles, then fades away.
 private struct FocusBox: View {
     @State private var settled = false
+    @State private var gone = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: 6)
             .stroke(TetherColor.accent, lineWidth: 2)
             .frame(width: 72, height: 72)
             .scaleEffect(settled ? 1 : 1.35)
-            .opacity(settled ? 0.85 : 1)
+            .opacity(gone ? 0 : 1)
             .shadow(color: .black.opacity(0.4), radius: 3)
-            .onAppear { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { settled = true } }
             .allowsHitTesting(false)
+            .task {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { settled = true }
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                withAnimation(.easeOut(duration: 0.35)) { gone = true }
+            }
     }
 }

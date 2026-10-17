@@ -175,6 +175,19 @@ final class CanonVendorTests: XCTestCase {
         XCTAssertEqual(obj.info?.objectFormat, .exifJPEG)
     }
 
+    func testNamelessTransferRequestGetsANameFromItsFormat() {
+        let t = ScriptedTransport(deviceInfo: VendorFixtures.canon)
+        let h = CanonHandler(engine: PTPEngine(transport: t), info: VendorFixtures.canon)
+        var body = ByteBuffer()
+        body.write(UInt32(0x0040_0012)); body.write(UInt16(0xB108)); body.write(UInt16(0)); body.write(UInt32(0))
+        body.write(UInt32(45_000_000)); body.write(UInt32(0)); body.write(UInt8(0))
+        let events = h.ingest(Data(Self.record(type: CanonCodes.Event.requestObjectTransfer64LFN, body: body.bytes) + Self.terminator))
+        guard case .objectAdded(let obj)? = events.first else { return XCTFail("expected objectAdded, got \(events)") }
+        XCTAssertTrue(obj.inSDRAM)
+        XCTAssertEqual(obj.info?.objectCompressedSize, 45_000_000)
+        XCTAssertEqual(obj.info?.filename, "IMG_0012.CR3")
+    }
+
     func testSDRAMObjectIsFlaggedWhenStorageIsHost() {
         let rec = CanonEventRecord.parse(Data(Self.objectAddedEx(handle: 7, storage: 0, format: 0x3801, size: 10, name: "A.JPG") + Self.terminator))
         XCTAssertEqual(rec.count, 1)
@@ -221,23 +234,37 @@ final class CanonVendorTests: XCTestCase {
         }
     }
 
-    func testSDRAMFetchUsesPartialObjectExThenTransferComplete() async throws {
+    func testSDRAMFetchUsesStandardPartialObjectThenTransferComplete() async throws {
         let rig = try await VendorRig(VendorFixtures.canon)
         let payload = Data((0 ..< 3000).map { UInt8($0 & 0xFF) })
-        rig.transport.on(CanonCodes.Op.getPartialObjectEx) { req in
+        rig.transport.on(.getPartialObject) { req in
             let off = Int(req.parameters[1]), want = Int(req.parameters[2])
             return .ok(payload[off ..< min(payload.count, off + want)])
         }
         rig.transport.on(CanonCodes.Op.transferComplete) { _ in .ok() }
-        await rig.engine.setChunk(1024)
         let h = CanonHandler(engine: rig.engine, info: rig.info)
         let info = PTPObjectInfo(storageID: 0, objectFormat: .exifJPEG, objectCompressedSize: UInt32(payload.count), filename: "IMG_0001.JPG")
         let (oi, data) = try await h.fetchObject(NewObject(handle: 0x42, storageID: 0, info: info, inSDRAM: true), progress: nil)
         XCTAssertEqual(data, payload)
         XCTAssertEqual(oi.filename, "IMG_0001.JPG")
-        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.getPartialObjectEx).count, 3)
+        XCTAssertEqual(rig.transport.requests(for: .getPartialObject).first?.parameters, [0x42, 0, 3000])
+        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.getPartialObjectEx).count, 0)
         XCTAssertEqual(rig.codes.last, CanonCodes.Op.transferComplete)
         XCTAssertEqual(rig.requests.last?.parameters, [0x42])
+    }
+
+    func testFailedSDRAMFetchStillReleasesTheCamera() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.on(.getPartialObject) { _ in .ok(Data()) }
+        rig.transport.on(CanonCodes.Op.transferComplete) { _ in .ok() }
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        let info = PTPObjectInfo(storageID: 0, objectFormat: .exifJPEG, objectCompressedSize: 3000, filename: "IMG_0002.JPG")
+        do {
+            _ = try await h.fetchObject(NewObject(handle: 0x43, storageID: 0, info: info, inSDRAM: true), progress: nil)
+            XCTFail("expected the empty read to fail")
+        } catch {}
+        XCTAssertEqual(rig.codes.last, CanonCodes.Op.transferComplete)
+        XCTAssertEqual(rig.requests.last?.parameters, [0x43])
     }
 
     func testLiveViewSetsEvfAndExtractsJPEGRecord() async throws {
