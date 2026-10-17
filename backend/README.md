@@ -17,7 +17,7 @@ the Swift client is written against is in [`API.md`](API.md).
 ## Run
 
 ```sh
-cd tether-ios/backend
+cd backend
 cargo run                       # http://127.0.0.1:8787, data in ./data/
 ```
 

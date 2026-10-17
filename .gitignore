@@ -1,0 +1,6 @@
+.DS_Store
+/Packages/TetherCore/.build/
+/backend/target/
+/backend/data/
+/Tether.xcodeproj/
+/DerivedData/

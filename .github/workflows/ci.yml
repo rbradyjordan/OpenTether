@@ -1,0 +1,54 @@
+name: CI
+
+# Runs only when started by hand from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      build_app:
+        description: "Also build the iOS app (macOS runner)"
+        type: boolean
+        default: true
+
+jobs:
+  tether-core:
+    name: TetherCore (swift test, Linux)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: Packages/TetherCore
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - run: swift build
+      - run: swift test
+
+  tether-cloud:
+    name: backend (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  tether-app:
+    name: Tether app (xcodegen + simulator build)
+    runs-on: macos-15
+    if: ${{ inputs.build_app }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - run: xcodebuild -project Tether.xcodeproj -scheme Tether -destination "generic/platform=iOS Simulator" -configuration Debug CODE_SIGNING_ALLOWED=NO build

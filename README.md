@@ -8,7 +8,7 @@ credits and watermarking, and a small cloud service for looks, AI colour
 match and batch export.
 
 ```
-tether-ios/
+tether/
 ├── Packages/TetherCore/     Swift package: the whole engine. Builds and tests on Linux.
 │   └── Sources/TetherCore/
 │       ├── PTP/             ByteBuffer, codes, datasets, PTPEngine, PTPTransport seam
@@ -62,10 +62,10 @@ browser to feel the interactions before building in Xcode.
 
 ```sh
 # Engine (Linux or macOS; needs Swift 6.1 and libsqlite3-dev on Linux)
-cd tether-ios/Packages/TetherCore && swift test
+cd Packages/TetherCore && swift test
 
 # Backend
-cd tether-ios/backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 TETHER_DEV_PURCHASES=1 cargo run        # http://127.0.0.1:8787, see backend/README.md
 
 # App (macOS with Xcode 16)
