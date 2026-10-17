@@ -17,6 +17,7 @@ final class USBConnectViewModel {
 
     func start() {
         guard task == nil else { return }
+        authorization = browser.currentAuthorization()   // what iOS already has, no prompt
         browser.start()
         let stream = browser.events
         task = Task { [weak self] in
@@ -38,7 +39,10 @@ final class USBConnectViewModel {
     }
 
     func requestAuthorizations() {
-        Task { authorization = await browser.requestAuthorizations() }
+        Task {
+            authorization = await browser.requestAuthorizations()
+            if authorization.canSendPTP { browser.start() }   // begin seeing cameras now
+        }
     }
 
     func connect(_ candidate: USBCameraCandidate, shoot: ShootSession, app: AppModel) {

@@ -37,37 +37,49 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         #endif
     }
 
+    /// Reads the saved permissions, asks only for what is still undecided,
+    /// then browses. On iOS the browser reports cameras only once access is
+    /// granted, so it is (re)started after the answers come back.
     public func start() {
-        Task { await requestAuthorizations() }
-        browser.start()
+        Task { @MainActor in
+            let before = self.currentAuthorization()
+            let after = await self.requestAuthorizations()
+            if after.canSendPTP, !before.canSendPTP, self.browser.isBrowsing { self.browser.stop() }
+            if !self.browser.isBrowsing { self.browser.start() }
+        }
     }
 
     public func stop() { browser.stop() }
 
-    /// Request control + contents authorization. On iOS < 18.3 only the
-    /// contents authorization exists, so control is `notRequired`.
-    @discardableResult
-    public func requestAuthorizations() async -> USBAuthorizationState {
-        var state = USBAuthorizationState()
+    /// What iOS has on record, without prompting.
+    @MainActor
+    public func currentAuthorization() -> USBAuthorizationState {
         #if os(iOS)
-        // Availability alone is not enough: some runtimes (the simulator among
-        // them) do not implement the selectors and would throw.
-        if #available(iOS 18.3, *), browser.responds(to: Selector(("requestControlAuthorizationWithCompletion:"))) {
-            state.control = await withCheckedContinuation { cont in
-                browser.requestControlAuthorization { status in cont.resume(returning: Self.grant(status)) }
-            }
-        } else {
-            state.control = .notRequired
-        }
-        if #available(iOS 14.0, *), browser.responds(to: Selector(("requestContentsAuthorizationWithCompletion:"))) {
-            state.contents = await withCheckedContinuation { cont in
-                browser.requestContentsAuthorization { status in cont.resume(returning: Self.grant(status)) }
-            }
-        } else {
-            state.contents = .notRequired
-        }
+        var state = USBAuthorizationState(control: .notRequired, contents: .notRequired)
+        // Availability alone is not enough: the simulator does not implement these.
+        if browser.responds(to: Selector(("contentsAuthorizationStatus"))) { state.contents = Self.grant(browser.contentsAuthorizationStatus) }
+        if browser.responds(to: Selector(("controlAuthorizationStatus"))) { state.control = Self.grant(browser.controlAuthorizationStatus) }
+        return state
         #else
-        state = USBAuthorizationState(control: .notRequired, contents: .notRequired)
+        return USBAuthorizationState(control: .notRequired, contents: .notRequired)
+        #endif
+    }
+
+    /// Ask for contents and control access where iOS has no answer yet, on the
+    /// main thread (ImageCaptureCore expects it). Already-decided permissions
+    /// are reported as they are; a denied one can only be changed in Settings.
+    @MainActor @discardableResult
+    public func requestAuthorizations() async -> USBAuthorizationState {
+        var state = currentAuthorization()
+        #if os(iOS)
+        if state.contents == .notDetermined, browser.responds(to: Selector(("requestContentsAuthorizationWithCompletion:"))) {
+            state.contents = await Self.ask { done in self.browser.requestContentsAuthorization { done($0) } }
+                ?? currentAuthorization().contents
+        }
+        if state.control == .notDetermined, browser.responds(to: Selector(("requestControlAuthorizationWithCompletion:"))) {
+            state.control = await Self.ask { done in self.browser.requestControlAuthorization { done($0) } }
+                ?? currentAuthorization().control
+        }
         #endif
         lock.lock(); authorization = state; lock.unlock()
         continuation.yield(.authorization(state))
@@ -75,7 +87,20 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     }
 
     #if os(iOS)
-    private static func grant(_ status: ICAuthorizationStatus) -> USBAuthorizationState.Grant {
+    /// One permission prompt; nil if iOS never calls back (then the caller
+    /// re-reads the status instead of waiting forever).
+    @MainActor
+    private static func ask(_ request: @escaping (@escaping @Sendable (ICAuthorizationStatus) -> Void) -> Void) async -> USBAuthorizationState.Grant? {
+        await withCheckedContinuation { (cont: CheckedContinuation<USBAuthorizationState.Grant?, Never>) in
+            let once = ResumeOnce(cont)
+            request { status in once.resume(grant(status)) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 90) { once.resume(nil) }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    static func grant(_ status: ICAuthorizationStatus) -> USBAuthorizationState.Grant {
         switch status {
         case .authorized: return .granted
         case .denied, .restricted: return .denied
@@ -268,6 +293,17 @@ public final class ImageCaptureCoreTransport: NSObject, PTPTransport, ICCameraDe
     public func cameraDevice(_ camera: ICCameraDevice, didReceiveThumbnail thumbnail: CGImage?, for item: ICCameraItem, error: Error?) {}
 }
 #endif
+
+/// Resumes a continuation at most once (callback vs. timeout).
+final class ResumeOnce<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<T, Never>?
+    init(_ cont: CheckedContinuation<T, Never>) { self.cont = cont }
+    func resume(_ value: T) {
+        lock.lock(); let c = cont; cont = nil; lock.unlock()
+        c?.resume(returning: value)
+    }
+}
 
 /// Hex strings for the USB IDs the setup guides show.
 public enum USBIDs {

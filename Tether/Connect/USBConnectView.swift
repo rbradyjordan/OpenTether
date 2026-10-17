@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TetherCore
 
 struct USBConnectView: View {
@@ -34,7 +35,15 @@ struct USBConnectView: View {
                 Text(model.authorization.summary).font(.subheadline)
                 Spacer()
                 if !model.authorization.canSendPTP {
-                    Button("Allow") { model.requestAuthorizations() }.buttonStyle(.tetherSecondary).controlSize(.small)
+                    if model.authorization.isDenied {
+                        // iOS never asks twice; the switch lives in Settings.
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                        .buttonStyle(.tetherSecondary).controlSize(.small)
+                    } else {
+                        Button("Allow") { model.requestAuthorizations() }.buttonStyle(.tetherSecondary).controlSize(.small)
+                    }
                 }
             }
         }
