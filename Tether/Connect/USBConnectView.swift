@@ -56,7 +56,7 @@ struct USBConnectView: View {
             if model.devices.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack { ProgressView().controlSize(.small); Text("Looking for a camera…").font(.subheadline) }
-                    Text("Use a data-capable USB-C cable and set the camera's USB mode to PC Remote / PTP. No hubs for the first try.")
+                    Text("Switch the camera on with a memory card inserted (iOS ignores cameras with no card), turn its Wi-Fi and Bluetooth off, and use a data-capable USB-C cable straight into the phone.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
                     Text(model.statusLine).font(TetherFont.hud).foregroundStyle(TetherColor.ink2).textSelection(.enabled)
                 }

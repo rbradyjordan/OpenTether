@@ -23,15 +23,16 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     private let browser = ICDeviceBrowser()
     private var devices: [String: ICCameraDevice] = [:]
     private let lock = NSLock()
-    private let continuation: AsyncStream<Event>.Continuation
-    public let events: AsyncStream<Event>
+    /// Every screen that listens (Connect hub, USB-C, the shoot screen's
+    /// reconnect, diagnostics) gets every event, and on subscribing the
+    /// current camera list and access state, so a screen opened after the
+    /// camera was plugged in still sees it.
+    private let deviceEvents = ValueBroadcaster<[USBCameraCandidate]>(initial: [])
+    private let otherEvents = ValueBroadcaster<Event>()
     public private(set) var authorization = USBAuthorizationState()
     public var vendorFilter: Set<CameraVendor>? = nil
 
     public override init() {
-        var c: AsyncStream<Event>.Continuation!
-        events = AsyncStream(bufferingPolicy: .bufferingNewest(16)) { c = $0 }
-        continuation = c
         super.init()
         browser.delegate = self
         // Type AND location: a mask with only the camera bit matches no
@@ -57,6 +58,17 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
     }
 
     public func stop() { browser.stop() }
+
+    /// A new stream for one listener: the current list first, then changes.
+    public var events: AsyncStream<Event> {
+        let devices = deviceEvents.stream(replayLatest: true)
+        let others = otherEvents.stream(replayLatest: true)
+        return AsyncStream { cont in
+            let a = Task { for await list in devices { cont.yield(.devices(list)) } }
+            let b = Task { for await event in others { cont.yield(event) } }
+            cont.onTermination = { _ in a.cancel(); b.cancel() }
+        }
+    }
 
     /// One line for the USB screen: is the browser running, what does iOS say
     /// about access, and what has it seen on the cable (cameras or not).
@@ -99,7 +111,7 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         }
         #endif
         lock.lock(); authorization = state; lock.unlock()
-        continuation.yield(.authorization(state))
+        otherEvents.send(.authorization(state))
         return state
     }
 
@@ -150,7 +162,7 @@ public final class USBCameraBrowser: NSObject, ICDeviceBrowserDelegate, @uncheck
         let total = devices.count
         lock.unlock()
         usbLog.notice("[USB] cameras: \(total, privacy: .public) seen, \(list.count, privacy: .public) listed")
-        continuation.yield(.devices(list.sorted { $0.name < $1.name }))
+        deviceEvents.send(list.sorted { $0.name < $1.name })
     }
 
     // MARK: ICDeviceBrowserDelegate
