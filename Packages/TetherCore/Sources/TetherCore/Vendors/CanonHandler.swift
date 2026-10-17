@@ -140,6 +140,11 @@ public enum CanonCodes {
         public static let name64 = 0x2C
     }
 
+    /// FocusMode (0xD108) values (libgphoto2 eos_focusmodes): 0 One Shot,
+    /// 1 AI Servo, 2 AI Focus, 3 Manual.
+    public static let focusModeServo: UInt32 = 1
+    public static let focusModeAIFocus: UInt32 = 2
+
     /// GetViewFinderData record types.
     public static let viewFinderJPEGRecord: UInt32 = 1
     /// TouchAfPosition `type` argument. VERIFY on hardware: libgphoto2
@@ -364,7 +369,6 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
     private(set) var available: [UInt32: [UInt32]] = [:]
     private var pending: [CameraEvent] = []
     private var destination: CaptureDestination = .card
-    private var afResultSeen = false
     private var liveViewOn = false
     /// AF coordinate space from FocusInfoEx, once the body has sent it.
     private(set) var afCoordinateSpace: (width: Int, height: Int)?
@@ -558,9 +562,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
                 out.append(.warning("The camera is about to power off."))
             case CanonCodes.Event.storeAdded, CanonCodes.Event.storeRemoved, CanonCodes.Event.storageInfoChanged, CanonCodes.Event.storageStatusChanged:
                 out.append(.storageChanged)
-            case CanonCodes.Event.afResult:
-                afResultSeen = true
-            case CanonCodes.Event.bulbExposureTime, CanonCodes.Event.recordingTime,
+            case CanonCodes.Event.bulbExposureTime, CanonCodes.Event.recordingTime, CanonCodes.Event.afResult,
                  CanonCodes.Event.shutdownTimerUpdated, CanonCodes.Event.requestGetEvent:
                 continue
             default:
@@ -786,22 +788,29 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         let y = UInt32(max(0, min(1, ny)) * Double(space.height - 1))
         try await engine.run(CanonCodes.Op.touchAfPosition, [CanonCodes.touchAfType, x, y])
         guard info.supports(CanonCodes.Op.doAf) else { return }
-        afResultSeen = false
         try await engine.run(CanonCodes.Op.doAf, timeout: 10)
-        // Servo AF keeps driving the lens until told to stop: wait for the
-        // AF result (or a short limit), then cancel. The lens stays put.
-        let started = Date()
-        while !afResultSeen, Date().timeIntervalSince(started) < Self.touchAfSettle {
-            if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
-            if !afResultSeen { try? await Task.sleep(nanoseconds: 100_000_000) }
-        }
-        if info.supports(CanonCodes.Op.afCancel) {
-            _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
+        // One Shot locks and stops by itself. Servo (and AI Focus, which can
+        // switch to it) keeps driving the lens, so give it time to land and
+        // then stop it; the lens stays where it focused. The AF-result event
+        // can't be the cue: bodies send it as AF starts.
+        let mode = values[CanonCodes.Prop.focusMode]
+        let tracks = mode == CanonCodes.focusModeServo || mode == CanonCodes.focusModeAIFocus
+        if tracks {
+            let started = Date()
+            while Date().timeIntervalSince(started) < Self.servoTouchAfSettle {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if let events = try? await fetchEvents() { pending.append(contentsOf: events) }
+            }
+            if info.supports(CanonCodes.Op.afCancel) {
+                _ = try? await engine.execute(PTPRequest(CanonCodes.Op.afCancel, timeout: 5))
+            }
+        } else if let events = try? await fetchEvents() {
+            pending.append(contentsOf: events)
         }
     }
 
-    /// Longest wait for an AF result before touch AF is cancelled.
-    static let touchAfSettle: TimeInterval = 1.5
+    /// How long Servo AF runs after a touch before it is stopped.
+    static let servoTouchAfSettle: TimeInterval = 1.2
 
     /// Without a first frame by then, the body is not going to send one.
     static let liveViewStartTimeout: TimeInterval = 8

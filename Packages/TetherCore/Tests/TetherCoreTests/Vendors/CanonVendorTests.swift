@@ -267,6 +267,32 @@ final class CanonVendorTests: XCTestCase {
         XCTAssertEqual(rig.requests.last?.parameters, [0x43])
     }
 
+    static let canonTouchAF = VendorFixtures.info("Canon Inc.", "Canon EOS R5m2",
+        ops: [0x9114, 0x9115, 0x9116, 0x9110, 0x9128, 0x9129, 0x9107, 0x9117, 0x9153, 0x910F, 0x915B, 0x9154, 0x9160],
+        extraStandardProps: false, vendorExtension: 0x0B)
+
+    private func touchFocus(focusMode: UInt32) async throws -> [PTPOperationCode] {
+        let rig = try await VendorRig(Self.canonTouchAF)
+        rig.transport.okAll()
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        h.ingest(Data(Self.propValueChanged(CanonCodes.Prop.focusMode, focusMode) + Self.terminator))
+        try await h.focus(atNormalizedX: 0.5, y: 0.5)
+        return rig.codes
+    }
+
+    func testOneShotTouchFocusIsNotCancelled() async throws {
+        let codes = try await touchFocus(focusMode: 0)
+        XCTAssertTrue(codes.contains(CanonCodes.Op.touchAfPosition))
+        XCTAssertTrue(codes.contains(CanonCodes.Op.doAf))
+        XCTAssertFalse(codes.contains(CanonCodes.Op.afCancel))
+    }
+
+    func testServoTouchFocusStopsAfterSettling() async throws {
+        let codes = try await touchFocus(focusMode: CanonCodes.focusModeServo)
+        XCTAssertEqual(codes.last, CanonCodes.Op.afCancel)
+        XCTAssertLessThan(codes.firstIndex(of: CanonCodes.Op.doAf)!, codes.firstIndex(of: CanonCodes.Op.afCancel)!)
+    }
+
     func testLiveViewSetsEvfAndExtractsJPEGRecord() async throws {
         let rig = try await VendorRig(VendorFixtures.canon)
         rig.transport.okAll()
