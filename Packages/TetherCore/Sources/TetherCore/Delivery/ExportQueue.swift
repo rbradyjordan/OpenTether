@@ -1,10 +1,17 @@
 import Foundation
 
 /// Platform hooks the queue needs: saving to Photos / Files and rendering a
-/// JPEG with a look and watermark. The app supplies these; tests use fakes.
+/// JPEG (or developed RAW) with a look. The app supplies these; tests use fakes.
 public protocol ExportSink: Sendable {
     /// Returns a stable identifier (Photos local identifier, file path…).
     func deliver(fileURL: URL, item: ExportJob.Item, destination: ExportDestination) async throws -> String?
+    /// Create empty folders up front (Capture One expects its four even when
+    /// one stays empty). Default: nothing.
+    func prepareDirectories(_ directories: [String], destination: ExportDestination) async throws
+}
+
+public extension ExportSink {
+    func prepareDirectories(_ directories: [String], destination: ExportDestination) async throws {}
 }
 
 public protocol ExportRenderer: Sendable {
@@ -12,7 +19,7 @@ public protocol ExportRenderer: Sendable {
     func render(original: URL, item: ExportJob.Item, look: CubeLUT?, options: ExportOptions) async throws -> URL
 }
 
-/// Pass-through renderer: exports originals untouched (used when no look and no watermark).
+/// Pass-through renderer: exports originals untouched (used when no look).
 public struct PassthroughRenderer: ExportRenderer {
     public init() {}
     public func render(original: URL, item: ExportJob.Item, look: CubeLUT?, options: ExportOptions) async throws -> URL { original }
@@ -22,13 +29,12 @@ public struct PassthroughRenderer: ExportRenderer {
 /// store; `resume()` on launch continues interrupted jobs. One job at a time,
 /// items sequential (Photos and FTP both prefer that).
 public actor ExportQueue {
-    public enum Event: Sendable { case updated(ExportJob), finished(ExportJob), creditsChanged(CreditsState) }
+    public enum Event: Sendable { case updated(ExportJob), finished(ExportJob) }
 
     private let store: SessionStore
     private let cache: CaptureCacheProxy
     private let sink: ExportSink
     private let renderer: ExportRenderer
-    private var cloud: TetherCloudClient?
     private let looks: LookResolver
     private let memory: WorkspaceMemory?
     private let ftpClientFactory: (@Sendable (StoredFTPDestination) -> FTPUploadingBox?)?
@@ -39,13 +45,12 @@ public actor ExportQueue {
     public nonisolated let events: AsyncStream<Event>
 
     public init(store: SessionStore, cache: CaptureCacheProxy, sink: ExportSink, renderer: ExportRenderer = PassthroughRenderer(),
-                cloud: TetherCloudClient? = nil, looks: LookResolver, memory: WorkspaceMemory? = nil,
+                looks: LookResolver, memory: WorkspaceMemory? = nil,
                 ftpClientFactory: (@Sendable (StoredFTPDestination) -> FTPUploadingBox?)? = nil) {
         self.store = store
         self.cache = cache
         self.sink = sink
         self.renderer = renderer
-        self.cloud = cloud
         self.looks = looks
         self.memory = memory
         self.ftpClientFactory = ftpClientFactory
@@ -58,32 +63,44 @@ public actor ExportQueue {
 
     /// Build a job from captures. RAW is skipped unless `includeRAW`.
     public func makeJob(session: ShootSession, captures: [CaptureItem], destination: ExportDestination,
-                        options: ExportOptions, look: LookStack, credits: CreditsState?) -> ExportJob {
+                        options: ExportOptions, look: LookStack) -> ExportJob {
         var items = captures.filter { $0.state.isReady && ($0.kind != .raw || options.includeRAW) && $0.kind.isStill }
             .map { ExportJob.Item(id: $0.id, filename: $0.filename, kind: $0.kind, bytes: $0.bytes) }
-        if let credits {
-            let watermarkAll = options.watermark || credits.watermarkRequired
-            var remaining = credits.tier == .pro ? Int.max : credits.balance
-            for i in items.indices where items[i].kind != .raw {
-                if watermarkAll { items[i].watermark = true; continue }
-                if remaining > 0 { remaining -= 1 } else { items[i].watermark = true }
-            }
-        }
         // Interop: resolve names and folders now so the UI can preview them.
+        // RAW+JPEG twins share one base name (rendered from the pair's first
+        // sequence number) so Lightroom and Capture One stack them again.
         let caps = Dictionary(uniqueKeysWithValues: captures.map { ($0.id, $0) })
-        var used = Set<String>()
+        var pairSequence: [String: Int] = [:]
+        for c in captures {
+            let key = c.sessionID + "/" + CaptureItem.pairKey(for: c.filename)
+            pairSequence[key] = min(pairSequence[key] ?? c.sequence, c.sequence)
+        }
+        var usedBases = Set<String>()
+        var pairBase: [String: String] = [:]
+        var usedNames = Set<String>()
         for i in items.indices {
             guard let c = caps[items[i].id] else { continue }
             let dir = options.layout.directory(for: c, sessionName: session.name)
-            let ext = (c.filename as NSString).pathExtension
-            var base = options.naming.render(capture: c, sessionName: session.name, index: c.sequence, camera: session.camera?.displayName,
-                                             tags: (try? store.tags(for: c.id)) ?? [], client: session.workflowTag)
+            let ext = (c.kind == .raw ? options.rawOutput.fileExtension : nil) ?? (c.filename as NSString).pathExtension
+            let pairKey = c.sessionID + "/" + CaptureItem.pairKey(for: c.filename)
+            let slot = dir.lowercased() + "|" + pairKey
+            var base: String
+            if let shared = pairBase[slot] {
+                base = shared
+            } else {
+                let rendered = options.naming.render(capture: c, sessionName: session.name, index: pairSequence[pairKey] ?? c.sequence,
+                                                     camera: session.camera?.displayName,
+                                                     tags: (try? store.tags(for: c.id)) ?? [], client: session.workflowTag)
+                base = rendered
+                var n = 1
+                while usedBases.contains((dir + "/" + base).lowercased()) { n += 1; base = "\(rendered)-\(n)" }
+                usedBases.insert((dir + "/" + base).lowercased())
+                pairBase[slot] = base
+            }
             var name = ext.isEmpty ? base : "\(base).\(ext)"
             var n = 1
-            while used.contains((dir + "/" + name).lowercased()) { n += 1; name = ext.isEmpty ? "\(base)-\(n)" : "\(base)-\(n).\(ext)" }
-            used.insert((dir + "/" + name).lowercased())
-            _ = base
-            base = ""
+            while usedNames.contains((dir + "/" + name).lowercased()) { n += 1; name = ext.isEmpty ? "\(base)-\(n)" : "\(base)-\(n).\(ext)" }
+            usedNames.insert((dir + "/" + name).lowercased())
             items[i].exportFilename = name
             items[i].exportDirectory = dir
         }
@@ -95,14 +112,17 @@ public actor ExportQueue {
         switch d { case .photos, .share: return false; default: return true }
     }
 
+    private func isFTP(_ d: ExportDestination) -> Bool {
+        if case .ftp = d { return true }
+        return false
+    }
+
     public func enqueue(_ job: ExportJob) throws {
         try store.save(job)
         continuation.yield(.updated(job))
         kick()
     }
 
-    /// Swap the cloud client when the user changes the server URL.
-    public func setCloud(_ client: TetherCloudClient?) { cloud = client }
 
     public func pause() { paused = true; current?.cancel() }
     public func resume() { paused = false; kick() }
@@ -144,7 +164,10 @@ public actor ExportQueue {
         let lut = try? await looks.lut(for: job.look)
 
         do {
-            if case .cloudBatch = job.destination { try await ensureCloudBatch(&job) }
+            if deliversFiles(job.destination), !isFTP(job.destination) {
+                let scaffold = job.options.layout.scaffold(sessionName: try? store.session(job.sessionID)?.name)
+                if !scaffold.isEmpty { try? await sink.prepareDirectories(scaffold, destination: job.destination) }
+            }
             for idx in job.items.indices {
                 if Task.isCancelled || paused { job.status = .paused; save(job); return }
                 guard !job.items[idx].isDone else { continue }
@@ -157,9 +180,6 @@ public actor ExportQueue {
                     job.items[idx].state = .failed("\(error)")
                     save(job)
                 }
-            }
-            if case .cloudBatch = job.destination, let cloud, let b = job.cloudBatchID, job.failedItems.isEmpty {
-                _ = try await cloud.completeBatch(b)
             }
             job.status = job.failedItems.isEmpty ? .completed : .failed("\(job.failedItems.count) of \(job.items.count) failed")
             if job.failedItems.isEmpty { await writeManifestIfWanted(job) }
@@ -179,14 +199,26 @@ public actor ExportQueue {
         }
         job.items[idx].state = .uploading(0)
         save(job)
+        if job.options.metadataOnly {
+            // Sidecar refresh only; the photo is already where it belongs.
+            let profile = memory?.get(WorkspaceMemory.metadataProfile) ?? MetadataProfile()
+            let packet = XMPPacket(capture: capture, tags: try store.tags(for: capture.id), profile: profile,
+                                   sessionName: try store.session(job.sessionID)?.name)
+            let base = ((item.exportFilename ?? item.filename) as NSString).deletingPathExtension
+            try await deliverCompanion(packet.data, named: base + ".xmp", directory: item.exportDirectory, job: job)
+            job.items[idx].state = .done(nil)
+            save(job)
+            return
+        }
         let original = try cache.url(for: rel)
-        var options = job.options
-        options.watermark = item.watermark
-        var rendered = item.kind == .raw ? original : try await renderer.render(original: original, item: item, look: job.options.applyLook ? lut : nil, options: options)
+        let options = job.options
+        let keepOriginalRAW = item.kind == .raw && job.options.rawOutput == .original
+        var rendered = keepOriginalRAW ? original : try await renderer.render(original: original, item: item, look: job.options.applyLook ? lut : nil, options: options)
         let profile = memory?.get(WorkspaceMemory.metadataProfile) ?? MetadataProfile()
         let sessionName = try store.session(job.sessionID)?.name
         let packet = XMPPacket(capture: capture, tags: try store.tags(for: capture.id), profile: profile, sessionName: sessionName)
-        if job.options.embedMetadata, profile.embedInJPEG, item.kind == .jpeg {
+        let deliversJPEG = item.kind == .jpeg || (item.kind == .raw && job.options.rawOutput == .jpeg)
+        if job.options.embedMetadata, profile.embedInJPEG, deliversJPEG {
             if let data = try? Data(contentsOf: rendered), let stamped = try? JPEGXMP.embed(packet, in: data) {
                 let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tether-xmp-\(UUID().uuidString).jpg")
                 try stamped.write(to: tmp)
@@ -196,27 +228,28 @@ public actor ExportQueue {
         }
         var sidecar: (Data, String)?
         if job.options.writeSidecars, deliversFiles(job.destination),
-           (item.kind == .raw && profile.writeSidecarsForRAW) || (item.kind != .raw && profile.writeSidecarsForJPEG) {
+           (keepOriginalRAW && profile.writeSidecarsForRAW) || (!keepOriginalRAW && profile.writeSidecarsForJPEG) {
             let base = ((item.exportFilename ?? item.filename) as NSString).deletingPathExtension
-            sidecar = (packet.data, base + ".xmp")
+            // One sidecar per base name: when the RAW twin is in this job its
+            // sidecar covers the pair (the JPEG already carries embedded XMP).
+            let rawTwinWritesIt = item.kind != .raw && profile.writeSidecarsForRAW && job.options.rawOutput == .original && job.items.contains { other in
+                other.kind == .raw && other.exportDirectory == item.exportDirectory
+                    && ((other.exportFilename ?? other.filename) as NSString).deletingPathExtension == base
+            }
+            if !rawTwinWritesIt { sidecar = (packet.data, base + ".xmp") }
         }
 
+        // Sidecar first: watched folders (Lightroom Auto Import, Capture One
+        // hot folders) then always find the metadata when the photo appears.
+        if let (data, name) = sidecar { try await deliverCompanion(data, named: name, directory: item.exportDirectory, job: job) }
+
         switch job.destination {
-        case .cloudBatch:
-            guard let cloud else { throw CloudError.notRegistered }
-            guard let put = job.items[idx].remoteID else { throw CloudError.decoding("no put url for item") }
-            let already = try await cloud.storedBytes(putURL: put)
-            let size = (try? FileManager.default.attributesOfItem(atPath: rendered.path)[.size] as? Int) ?? 0
-            if already == 0 || already != size {
-                try await cloud.upload(fileURL: rendered, to: put, contentType: item.kind == .raw ? "application/octet-stream" : "image/jpeg")
-            }
-            job.items[idx].state = .done(put)
-            try? store.recordExport(captureID: item.id, destination: .cloud, jobID: job.id, remoteID: put)
         case .ftp(let destinationID):
             guard let dest = try store.ftpDestinations().first(where: { $0.id == destinationID }),
                   let client = ftpClientFactory?(dest) else { throw ExportError.ftpDestinationMissing }
             let data = try Data(contentsOf: rendered)
-            let remote = (dest.remoteDirectory as NSString).appendingPathComponent(item.filename)
+            // Same naming and folders as every other file destination, so sidecars sit beside their photos.
+            let remote = (dest.remoteDirectory as NSString).appendingPathComponent(item.deliveredRelativePath)
             try await client.upload(data, remote)
             job.items[idx].state = .done(remote)
             try? store.recordExport(captureID: item.id, destination: .ftp, jobID: job.id, remoteID: remote)
@@ -227,7 +260,6 @@ public actor ExportQueue {
             try? store.recordExport(captureID: item.id, destination: key, jobID: job.id, remoteID: id)
         }
         if rendered != original { try? FileManager.default.removeItem(at: rendered) }
-        if let (data, name) = sidecar { try await deliverCompanion(data, named: name, directory: item.exportDirectory, job: job) }
         save(job)
     }
 
@@ -241,8 +273,6 @@ public actor ExportQueue {
         case .ftp(let destinationID):
             guard let dest = try store.ftpDestinations().first(where: { $0.id == destinationID }), let client = ftpClientFactory?(dest) else { return }
             try await client.upload(data, (dest.remoteDirectory as NSString).appendingPathComponent(item.deliveredRelativePath))
-        case .cloudBatch:
-            break // the cloud batch keeps metadata in the manifest it already stores
         default:
             _ = try await sink.deliver(fileURL: tmp, item: item, destination: job.destination)
         }
@@ -260,37 +290,9 @@ public actor ExportQueue {
         }
         let manifest = SessionManifest(session: session, captures: caps, tags: tags, collections: colls, exportedNames: names)
         let base = NamingTemplate.safe(session.name)
-        if let json = try? manifest.json() { try? await deliverCompanion(json, named: "\(base)-manifest.json", directory: job.options.layout == .captureOne ? "\(base)/Output" : "", job: job) }
-        try? await deliverCompanion(Data(manifest.csv().utf8), named: "\(base)-manifest.csv", directory: job.options.layout == .captureOne ? "\(base)/Output" : "", job: job)
-    }
-
-    private func ensureCloudBatch(_ job: inout ExportJob) async throws {
-        guard job.cloudBatchID == nil else { return }
-        guard let cloud else { throw CloudError.notRegistered }
-        let session = try store.session(job.sessionID)
-        let reqs = job.items.map { TetherCloudClient.BatchItemRequest(clientID: $0.id, filename: $0.filename, kind: $0.kind == .raw ? "raw" : "jpeg", bytes: $0.bytes) }
-        var manifest: SessionManifest?
-        if job.options.writeManifest, let session {
-            let caps = try store.captures(ids: job.items.map(\.id))
-            var tags: [String: [String]] = [:], colls: [String: [String]] = [:]
-            for c in caps {
-                tags[c.id] = try? store.tags(for: c.id)
-                colls[c.id] = (try? store.collectionIDs(containing: c.id))?.compactMap { try? store.collection($0)?.name }
-            }
-            let names = Dictionary(uniqueKeysWithValues: job.items.compactMap { i in i.exportFilename.map { (i.id, $0) } })
-            manifest = SessionManifest(session: session, captures: caps, tags: tags, collections: colls, exportedNames: names)
-        }
-        let batch = try await cloud.createBatch(sessionName: session?.name ?? "Session", watermark: job.options.watermark, lookID: job.look.lookID, items: reqs, manifest: manifest)
-        job.cloudBatchID = batch.batchID
-        job.creditsCharged = batch.creditsCharged
-        for b in batch.items {
-            if let i = job.items.firstIndex(where: { $0.id == b.clientID }) {
-                job.items[i].remoteID = b.putURL
-                job.items[i].watermark = b.watermark
-            }
-        }
-        save(job)
-        if let me = try? await cloud.me() { continuation.yield(.creditsChanged(me.state)) }
+        let manifestDir = job.options.layout.manifestDirectory(sessionName: session.name)
+        if let json = try? manifest.json() { try? await deliverCompanion(json, named: "\(base)-manifest.json", directory: manifestDir, job: job) }
+        try? await deliverCompanion(Data(manifest.csv().utf8), named: "\(base)-manifest.csv", directory: manifestDir, job: job)
     }
 
     private func save(_ job: ExportJob) {

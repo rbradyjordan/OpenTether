@@ -2,7 +2,7 @@ import SwiftUI
 import TetherCore
 
 /// Disconnect is a dim and a sheet, never an alert: a danger pill, the
-/// reconnect strategy in one sentence, and one button.
+/// reconnect strategy in one sentence, one button, and always a way out.
 struct ReconnectView: View {
     @Environment(AppModel.self) private var app
     var model: ShootViewModel
@@ -18,6 +18,14 @@ struct ReconnectView: View {
                     ProgressView().controlSize(.small)
                         .accessibilityLabel("Reconnecting")
                 }
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(TetherColor.ink1)
+                        .frame(width: TetherHit.min, height: TetherHit.min)
+                        .tetherGlass(in: Circle(), interactive: true)
+                }
+                .accessibilityLabel("Close")
             }
             Text(strategy.title)
                 .font(TetherFont.title)
@@ -34,13 +42,27 @@ struct ReconnectView: View {
             }
             Spacer(minLength: 0)
             button(strategy)
+            HStack {
+                Button("Not now") { dismiss() }
+                Spacer()
+                Button("End session", role: .destructive) {
+                    dismiss()
+                    Task { await app.endShoot() }
+                }
+                .foregroundStyle(TetherColor.danger)
+            }
+            .font(TetherFont.callout.weight(.medium))
+            .foregroundStyle(TetherColor.ink1)
+            .frame(minHeight: TetherHit.min)
         }
         .padding(TetherSpace.xl)
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .forceDark()
-        .presentationDetents([.fraction(0.42)])
+        .presentationDetents([.fraction(0.5)])
         .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(model.isReconnecting)
+        // Swiping away never cancels: reconnecting carries on and the red
+        // status pill brings this back.
+        .onDisappear { model.snoozeReconnect() }
         .onAppear { if case .waitForUSBDevice = strategy { model.reconnect() } }
     }
 
@@ -74,7 +96,7 @@ struct ReconnectView: View {
                 .font(TetherFont.headline)
                 .frame(maxWidth: .infinity, minHeight: TetherHit.min + 8)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.tetherPrimary)
         .tint(TetherColor.accent)
         .contentTransition(.numericText())
     }

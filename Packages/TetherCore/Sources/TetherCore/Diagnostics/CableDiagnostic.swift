@@ -131,9 +131,9 @@ public enum WiredDiagnostics {
     public static func checks(_ p: Probes) -> [DiagnosticCheck] {
         [
             DiagnosticCheck(id: "bus", title: "Camera on the cable",
-                            tip: "Use a data-capable USB-C cable (not charge-only). Some cameras need their USB mode set to PC Remote / PTP before they appear. Try the camera's other port if it has two, and skip hubs.") {
+                            tip: "If your camera doesn't appear, try disconnecting and reconnecting the USB-C cable. Use a data-capable cable (not charge-only). Some cameras need their USB mode set to PC Remote / PTP before they appear. Try the camera's other port if it has two, and skip hubs.") {
                 if let d = await p.deviceOnBus() { return .pass("\(d.name) (\(d.vendorGuess.displayName), USB \(USBIDs.hex(d.usbVendorID)):\(USBIDs.hex(d.usbProductID)))") }
-                return .fail("No camera is visible on USB. Check the cable, the camera's USB connection mode, and that the camera is on.")
+                return .fail("No camera is visible on USB. Try disconnecting and reconnecting the USB-C cable, then check the cable, the camera's USB connection mode, and that the camera is on.")
             },
             DiagnosticCheck(id: "auth", title: "Permissions",
                             tip: "Tether needs both Camera Control and Contents access to send PTP commands (Settings → Privacy & Security).") {
@@ -191,11 +191,17 @@ public enum WirelessDiagnostics {
         }
     }
 
+    #if targetEnvironment(macCatalyst)
+    static let ssidUnavailableMessage = "macOS does not share the network name with apps; check the Wi-Fi menu shows the camera's network"
+    #else
+    static let ssidUnavailableMessage = "Network name unavailable (Location permission needed to read it)"
+    #endif
+
     public static func checks(_ p: Probes) -> [DiagnosticCheck] {
         [
             DiagnosticCheck(id: "wifi", title: "On the camera's Wi-Fi",
                             tip: "Join the camera's own network in Settings → Wi-Fi first. Tether never joins it for you.") {
-                guard let s = await p.ssid() else { return .warn("Network name unavailable (Location permission needed to read it)") }
+                guard let s = await p.ssid() else { return .warn(ssidUnavailableMessage) }
                 if let v = CameraWiFiHintsBridge.vendor(s) { return .pass("\(s) looks like a \(v.displayName) camera network") }
                 return .warn("Connected to \(s). If that is not the camera, join the camera's network.")
             },

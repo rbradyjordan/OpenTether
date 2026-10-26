@@ -37,7 +37,7 @@ struct PropertyPickerSheet: View {
             }
         }
         .padding(.top, TetherSpace.l)
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .forceDark()
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)

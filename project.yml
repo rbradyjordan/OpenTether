@@ -17,7 +17,7 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: minimal
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: NT6U3PUUVQ
 
 targets:
   Tether:
@@ -37,36 +37,75 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_ENTITLEMENTS: Tether/Tether.entitlements
+        # Mac Catalyst: same app, same bundle ID (universal purchase), its own
+        # App Sandbox entitlements. iOS settings above are unchanged.
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Tether/Tether-macOS.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        # "Optimize Interface for Mac": native Mac idiom and sizes, not the
+        # iPad layout scaled to 77 %.
+        "TARGETED_DEVICE_FAMILY[sdk=macosx*]": "6"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     info:
       path: Tether/Info.plist
       properties:
-        CFBundleDisplayName: Tether
+        CFBundleDisplayName: Open Tether
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        NSCameraUsageDescription: "Tether uses this to control your connected camera for tethering."
-        NSLocalNetworkUsageDescription: "Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you."
+        NSCameraUsageDescription: "Open Tether controls the camera you connect by cable: firing the shutter, live view and exposure settings."
+        NSLocalNetworkUsageDescription: "Open Tether looks for cameras on the Wi-Fi network you are connected to and receives photos they send. It never joins a network for you."
         NSBonjourServices:
           - _ptp._tcp
           - _lnp._tcp
           - _bonjour._tcp
-        NSPhotoLibraryAddUsageDescription: "Tether saves the photos you choose to export into an album named after your session."
-        NSPhotoLibraryUsageDescription: "Tether saves exported photos into your library and checks that the save completed."
-        NSLocationWhenInUseUsageDescription: "Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere."
-        UIBackgroundModes:
-          - fetch
-          - processing
+        NSPhotoLibraryAddUsageDescription: "Open Tether saves the photos you choose to export to your photo library."
+        NSPhotoLibraryUsageDescription: "Open Tether reads the photos on a camera you connect by cable, and files exported photos into an album named after your session."
+        NSLocationWhenInUseUsageDescription: "Open Tether reads the Wi-Fi network name so it can tell whether you are connected to your camera's network. Your location is never stored or sent anywhere."
         UISupportsDocumentBrowser: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Camera photos
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.camera-raw-image, public.jpeg, public.heic, public.heif, public.tiff, public.png]
+          - CFBundleTypeName: Lightroom and Capture One catalogs
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.adobe.lightroom.catalog, com.captureone.catalog, com.captureone.catalogdb, com.captureone.session]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.adobe.lightroom.catalog
+            UTTypeDescription: Lightroom Classic Catalog
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [lrcat] }
+          - UTTypeIdentifier: com.captureone.catalog
+            UTTypeDescription: Capture One Catalog
+            UTTypeConformsTo: [com.apple.package]
+            UTTypeTagSpecification: { public.filename-extension: [cocatalog] }
+          - UTTypeIdentifier: com.captureone.catalogdb
+            UTTypeDescription: Capture One Catalog Database
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [cocatalogdb] }
+          - UTTypeIdentifier: com.captureone.session
+            UTTypeDescription: Capture One Session
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification: { public.filename-extension: [cosessiondb] }
         LSSupportsOpeningDocumentsInPlace: true
         UIFileSharingEnabled: true
         UIRequiresFullScreen: false
         ITSAppUsesNonExemptEncryption: false
+        LSApplicationCategoryType: public.app-category.photography
+        # Wi-Fi cameras (GoPro, 360° cameras) only speak plain HTTP on their own network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
 
   TetherTests:
     type: bundle.unit-test

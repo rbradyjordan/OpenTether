@@ -77,8 +77,15 @@ public actor TetherSession {
     private var liveViewTask: Task<Void, Never>?
     private var propertyRefreshTask: Task<Void, Never>?
     private var transportHealth: TransportHealth?
-    private let continuation: AsyncStream<Event>.Continuation
-    public nonisolated let events: AsyncStream<Event>
+    /// Sidecars that arrived on their own (FTP push), by pair key, so the
+    /// photo or its RAW/JPEG twin picks them up whichever lands first.
+    private var pendingSidecars: [String: XMPPacket] = [:]
+    /// Fans every event out to each subscriber: the shoot screen and the
+    /// library both listen, and a plain `AsyncStream` would split events
+    /// between them.
+    private let broadcaster = ValueBroadcaster<Event>()
+    /// A new stream of every event from now on; each caller gets its own.
+    public nonisolated var events: AsyncStream<Event> { broadcaster.stream(replayLatest: false) }
 
     /// Properties shown on the shoot screen; vendors fill what they have.
     public static let trackedProperties: [TetherProperty] = [.shutterSpeed, .aperture, .iso, .exposureCompensation, .whiteBalance, .batteryLevel, .captureDestination, .storageFreeImages, .exposureProgram, .driveMode, .focusMode]
@@ -92,9 +99,6 @@ public actor TetherSession {
         self.store = store
         self.cache = cache
         self.previews = previews
-        var c: AsyncStream<Event>.Continuation!
-        events = AsyncStream(bufferingPolicy: .bufferingNewest(512)) { c = $0 }
-        continuation = c
         items = (try? store.captures(in: session.id)) ?? []
         knownHandles = Set(items.map(\.handle))
         selectedItemID = items.last { $0.state.isReady }?.id
@@ -213,7 +217,7 @@ public actor TetherSession {
         if let i = properties.firstIndex(where: { $0.property == property }) {
             properties[i].raw = raw
             properties[i].display = properties[i].choices.first { $0.raw == raw }?.display ?? properties[i].display
-            continuation.yield(.properties(properties))
+            broadcaster.send(.properties(properties))
         }
         scheduleRefresh(after: 0.4)
     }
@@ -222,7 +226,7 @@ public actor TetherSession {
         guard let handler else { return }
         if let p = try? await handler.readProperties(Self.trackedProperties) {
             properties = p
-            continuation.yield(.properties(p))
+            broadcaster.send(.properties(p))
         }
     }
 
@@ -254,7 +258,7 @@ public actor TetherSession {
                     if var frame = try await handler.nextLiveViewFrame() {
                         sequence += 1
                         frame.sequence = sequence
-                        self.continuation.yield(.liveView(frame))
+                        self.broadcaster.send(.liveView(frame))
                     } else {
                         try await Task.sleep(nanoseconds: 33_000_000)
                     }
@@ -265,6 +269,22 @@ public actor TetherSession {
                 }
             }
         }
+    }
+
+    /// Touch AF: focus at a point of the live-view frame, 0…1 from the top left.
+    public func focus(atNormalizedX x: Double, y: Double) async throws -> FocusResult {
+        guard let handler, status.isLive else { throw PTPError.notConnected }
+        return try await handler.focus(atNormalizedX: min(max(x, 0), 1), y: min(max(y, 0), 1))
+    }
+
+    /// Press-and-hold focus: AF runs until `stopTrackingFocus`.
+    public func startTrackingFocus(atNormalizedX x: Double, y: Double) async throws {
+        guard let handler, status.isLive else { throw PTPError.notConnected }
+        try await handler.startTrackingFocus(atNormalizedX: min(max(x, 0), 1), y: min(max(y, 0), 1))
+    }
+
+    public func stopTrackingFocus() async {
+        await handler?.stopTrackingFocus()
     }
 
     public func stopLiveView() async {
@@ -380,7 +400,7 @@ public actor TetherSession {
     private func progress(id: String, received: Int, total: Int?) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         items[i].state = .downloading(received: received, total: total ?? (items[i].bytes > 0 ? items[i].bytes : nil))
-        continuation.yield(.capture(items[i]))
+        broadcaster.send(.capture(items[i]))
     }
 
     /// Captures left half-downloaded by a crash: card objects can be fetched
@@ -400,8 +420,29 @@ public actor TetherSession {
 
     // MARK: FTP push ingest
 
-    /// A file the camera pushed to our FTP server: adopt it as a capture.
-    public func ingestFile(at url: URL, from: String) async {
+    /// A file the camera pushed to our FTP server, or one imported from Files:
+    /// adopt it as a capture. `sidecar` is its XMP when the caller already
+    /// matched one (Files import); otherwise `<name>.xmp` beside it is used.
+    /// `consumeSource` deletes the file and sidecar afterwards: only for
+    /// private copies (FTP inbox, temporary import copies), never a user folder.
+    public func ingestFile(at url: URL, from: String, sidecar: URL? = nil, consumeSource: Bool = true) async {
+        // A sidecar on its own is metadata, not a frame. Cameras and Photo
+        // Mechanic send it before or after the photo: apply it to the frame
+        // (and its twin) already here, and remember it for any half of the
+        // pair still to come.
+        if url.pathExtension.lowercased() == "xmp" {
+            let key = CaptureItem.pairKey(for: url.deletingPathExtension().lastPathComponent)
+            if let data = try? Data(contentsOf: url), let packet = try? XMPPacket(parsing: data) {
+                pendingSidecars[key] = packet
+                for var target in items where target.pairKey == key {
+                    let tags = packet.applied(to: &target)
+                    upsert(target)
+                    if !tags.isEmpty { try? store.addTags(tags, to: [target.id]) }
+                }
+            }
+            if consumeSource { try? FileManager.default.removeItem(at: url) }
+            return
+        }
         let seq = (try? store.nextSequence(in: session.id)) ?? (items.count + 1)
         let name = url.lastPathComponent
         let kind = PTPObjectInfo(objectFormat: .undefined, filename: name).mediaKind
@@ -419,14 +460,18 @@ public actor TetherSession {
             // Interop: metadata that came with the file (Photo Mechanic / Capture
             // One sidecar, or an embedded packet) seeds rating, flag, label, tags.
             var incomingTags: [String] = []
-            let sidecarURL = url.deletingPathExtension().appendingPathExtension("xmp")
+            let candidates = [sidecar, url.deletingPathExtension().appendingPathExtension("xmp"), url.appendingPathExtension("xmp")].compactMap { $0 }
+            let sidecarURL = candidates.first { FileManager.default.fileExists(atPath: $0.path) } ?? candidates[0]
             if let sc = try? Data(contentsOf: sidecarURL), let packet = try? XMPPacket(parsing: sc) {
                 incomingTags = packet.applied(to: &item)
-                try? FileManager.default.removeItem(at: sidecarURL)
+                pendingSidecars[item.pairKey] = packet   // for the twin, if it comes later
+                if consumeSource { try? FileManager.default.removeItem(at: sidecarURL) }
+            } else if let packet = pendingSidecars[item.pairKey] {
+                incomingTags = packet.applied(to: &item)
             } else if kind == .jpeg, let packet = try? JPEGXMP.extract(from: data) {
                 incomingTags = packet.applied(to: &item)
             }
-            try? FileManager.default.removeItem(at: url)
+            if consumeSource { try? FileManager.default.removeItem(at: url) }
             upsert(item)
             if !incomingTags.isEmpty { try? store.addTags(incomingTags, to: [item.id]) }
         } catch {
@@ -442,7 +487,12 @@ public actor TetherSession {
 
     public func select(_ id: String?) {
         selectedItemID = id
-        continuation.yield(.selection(id))
+        broadcaster.send(.selection(id))
+    }
+
+    public func setRouting(_ routing: RoutingRules) {
+        session.routing = routing
+        persistSession()
     }
 
     public func setShowNewestCapture(_ on: Bool) {
@@ -477,6 +527,7 @@ public actor TetherSession {
         guard var item = items.first(where: { $0.id == id }) else { return }
         item.colorLabel = item.colorLabel == color ? .none : color
         upsert(item)
+        for var twin in items where twin.pairKey == item.pairKey && twin.id != item.id { twin.colorLabel = item.colorLabel; upsert(twin) }
     }
 
     public func delete(_ id: String) {
@@ -498,7 +549,7 @@ public actor TetherSession {
         guard item.sessionID == session.id, let i = items.firstIndex(where: { $0.id == item.id }) else { return }
         let previousRating = items[i].rating
         items[i] = item
-        continuation.yield(.capture(item))
+        broadcaster.send(.capture(item))
         // Library edits reach the camera too when it keeps ratings.
         if item.rating != previousRating, let handler, handler.capabilities.contains(.rating) {
             try? await handler.setRating(handle: item.handle, stars: item.rating)
@@ -510,17 +561,17 @@ public actor TetherSession {
     private func upsert(_ item: CaptureItem) {
         if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
         try? store.save(item)
-        continuation.yield(.capture(item))
+        broadcaster.send(.capture(item))
     }
 
     private func persistSession() { try? store.save(session) }
 
     private func setStatus(_ s: Status) {
         status = s
-        continuation.yield(.status(s))
+        broadcaster.send(.status(s))
     }
 
-    private func warn(_ s: String) { continuation.yield(.warning(s)) }
+    private func warn(_ s: String) { broadcaster.send(.warning(s)) }
 
     public func updateTransportHealth(_ h: TransportHealth) { transportHealth = h }
 }

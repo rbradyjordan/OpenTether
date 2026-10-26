@@ -1,5 +1,6 @@
 import SwiftUI
 import TetherCore
+import UniformTypeIdentifiers
 
 /// Filter bar + grid + batch bar for the current source. Serves as the pushed
 /// screen on iPhone and the content column on iPad.
@@ -8,6 +9,9 @@ struct LibraryContent: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Bindable var model: LibraryModel
     @State private var showInspectorSheet = false
+    @State private var importing = false
+    @State private var pickingCatalog = false
+    @State private var catalogURL: URL?
 
     private var isCompact: Bool { sizeClass != .regular }
 
@@ -16,11 +20,23 @@ struct LibraryContent: View {
             FilterBar(model: model)
             LibraryGrid(model: model)
         }
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .safeAreaInset(edge: .bottom) { BatchBar(model: model) }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { LibraryToolbar(model: model, compact: isCompact, showInspector: $showInspectorSheet) }
+        .toolbar { LibraryToolbar(model: model, compact: isCompact, showInspector: $showInspectorSheet, importing: $importing, pickingCatalog: $pickingCatalog) }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.folder, .image, .rawImage, .movie], allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result { Task { await app.importFromFiles(urls) } }
+        }
+        .background {
+            // A second importer needs its own host view.
+            Color.clear.fileImporter(isPresented: $pickingCatalog, allowedContentTypes: UTType.catalogTypes + [.data]) { result in
+                if case .success(let url) = result { catalogURL = url }
+            }
+        }
+        .sheet(item: Binding(get: { catalogURL.map(IdentifiedURL.init) }, set: { catalogURL = $0?.url })) { item in
+            CatalogSyncSheet(catalogURL: item.url)
+        }
         .librarySearch(model: model)
         .toolbarTitleMenu { titleMenu }
         .sheet(isPresented: $showInspectorSheet) {
@@ -50,12 +66,18 @@ private struct LibraryToolbar: ToolbarContent {
     @Bindable var model: LibraryModel
     var compact: Bool
     @Binding var showInspector: Bool
+    @Binding var importing: Bool
+    @Binding var pickingCatalog: Bool
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button(model.selectionMode ? "Done" : "Select") { model.selectionMode.toggle() }
                 .accessibilityLabel(model.selectionMode ? "Leave selection mode" : "Select photos")
             if !compact {
+                Menu {
+                    Button { importing = true } label: { Label("Import photos or a folder…", systemImage: "square.and.arrow.down") }
+                    Button { pickingCatalog = true } label: { Label("Sync ratings from a catalog…", systemImage: "arrow.triangle.2.circlepath") }
+                } label: { Label("Import", systemImage: "square.and.arrow.down") }
                 UndoRedoButtons(model: model)
                 SortMenu(model: model)
                 ZoomMenu(model: model)
@@ -64,8 +86,11 @@ private struct LibraryToolbar: ToolbarContent {
                 if compact { showInspector = true; model.inspectorOpen = true } else { model.inspectorOpen.toggle() }
             } label: { Label("Inspector", systemImage: model.inspectorOpen ? "sidebar.right" : "info.circle") }
             .disabled(model.inspectedItem == nil && !model.inspectorOpen)
+            .macToolbarTint()
             if compact {
                 Menu {
+                    Button { importing = true } label: { Label("Import photos or a folder…", systemImage: "square.and.arrow.down") }
+                    Button { pickingCatalog = true } label: { Label("Sync ratings from a catalog…", systemImage: "arrow.triangle.2.circlepath") }
                     UndoRedoButtons(model: model)
                     SortMenu(model: model)
                     ZoomMenu(model: model)
@@ -75,4 +100,10 @@ private struct LibraryToolbar: ToolbarContent {
             }
         }
     }
+}
+
+/// `URL` wrapper for `.sheet(item:)`.
+struct IdentifiedURL: Identifiable {
+    var url: URL
+    var id: String { url.absoluteString }
 }

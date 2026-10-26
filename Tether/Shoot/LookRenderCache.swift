@@ -28,7 +28,7 @@ final class LookRenderCache: @unchecked Sendable {
             guard let data = try? proxy.load(relativePath) else { return nil }
             if lut == nil { return ImageDecoding.decode(data, maxPixelSize: maxPixelSize) }
             // The resolver already blended strength into the LUT.
-            return try? renderer.renderImage(data: data, look: lut, strength: 1, maxPixelSize: maxPixelSize, watermark: false)
+            return try? renderer.renderImage(data: data, look: lut, strength: 1, maxPixelSize: maxPixelSize)
         }.value
         if let rendered { images.setObject(rendered, forKey: key) }
         return rendered

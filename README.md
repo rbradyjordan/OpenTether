@@ -1,11 +1,11 @@
-# Tether — iOS camera tethering
+# Open Tether — iOS camera tethering
 
-A full-stack tethering system built to the blueprint in `docs/BLUEPRINT.md`:
-one PTP engine driving two transports (USB-C through ImageCaptureCore, Wi-Fi
-through an in-house PTP/IP stack), multi-protocol discovery, an on-device FTP
-receiver plus FTP/FTPS upload, a JPEG-first review UX, routed delivery with
-credits and watermarking, and a small cloud service for looks, AI colour
-match and batch export.
+Free, local-only camera tethering for iPhone and iPad: one PTP engine
+driving USB-C (ImageCaptureCore) and Wi-Fi (an in-house PTP/IP stack), HTTP
+drivers for Wi-Fi cameras (Ricoh GR, GoPro, 360° cameras), an on-device FTP
+receiver plus FTP/FTPS upload, a JPEG-first review UX, RAW workflows, and
+Files / Capture One / Lightroom interop. No account, no servers, no
+purchases: everything runs on the device.
 
 ```
 tether/
@@ -15,148 +15,118 @@ tether/
 │       ├── PTPIP/           packet family, framer, NSStream + POSIX channels, PTPIPTransport
 │       ├── USB/             USB containers, ICDeviceBrowser manager, ImageCaptureCore transport
 │       ├── Device/          CameraVendor, capability flags, abstract properties, VendorHandler
-│       ├── Vendors/         Canon · Nikon · Sony · Fujifilm · Olympus · Panasonic · Leica · Ricoh
-│       ├── Discovery/       SSDP · Bonjour · Fuji UDP + dial-back · Ricoh probe · SSID monitor
+│       ├── Vendors/         Canon · Nikon · Sony · Fujifilm · Olympus · Panasonic · Leica (PTP)
+│       │                    Ricoh GR · GoPro · Open Spherical Camera (HTTP) · generic PTP
+│       ├── Discovery/       SSDP · Bonjour · Fuji UDP + dial-back · Ricoh / GoPro / OSC probes · SSID monitor
 │       ├── FTP/             FTP server (cameras push to us) · FTP/FTPS upload clients
 │       ├── Capture/         CaptureItem, CaptureCacheProxy, TetherSession actor, reconnect policy
-│       ├── Store/           SQLite persistence (sessions, captures, exports, looks, settings)
-│       ├── Looks/           .cube 3D LUT parse/sample/blend, LookStack, LookResolver
-│       ├── Delivery/        ExportJob, credits model, resumable ExportQueue
-│       ├── Library/         collections (manual + smart/SQL), tags, stacks, WorkspaceMemory, ReviewEditor (undo), Commands, SessionAutomations
-│       ├── Interop/         XMP sidecars + embedded packets, EXIF reader, naming templates, Capture One layouts, manifests
-│       ├── Cloud/           typed client for the backend contract
+│       ├── Store/           SQLite persistence (sessions, captures, exports, looks, folders, settings)
+│       ├── Looks/           .cube 3D LUTs, built-in looks, on-device colour match, LookResolver
+│       ├── Delivery/        ExportJob (RAW output, hot folder), resumable ExportQueue
+│       ├── Library/         collections, tags, stacks, WorkspaceMemory, ReviewEditor (undo), Commands
+│       ├── Interop/         XMP, EXIF, naming, folder layouts, manifests, Files import plan,
+│       │                    Lightroom / Capture One catalog readers
 │       └── Diagnostics/     cable/power and Wi-Fi checklists
-├── Tether/                  SwiftUI app (iOS 17+): every screen on the user journey
+├── Tether/                  SwiftUI app (iOS 17+, Liquid Glass on iOS 26)
 ├── TetherTests/             app view-model tests
 ├── project.yml              XcodeGen project (app + tests + local package)
-└── backend/                 Rust (axum + SQLite): looks, colour match, credits, batch export
+└── backend/                 Legacy cloud service, no longer used by the app
 ```
+
+## Cameras
+
+| Brand | USB-C | Wi-Fi |
+|-------|-------|-------|
+| Canon EOS | full control | full control (PTP/IP) |
+| Canon PowerShot / compacts | import as you shoot | — |
+| Nikon Z / DSLR | full control | full control (PTP/IP) |
+| Sony α (PC Remote) | full control | full control (PTP/IP) |
+| Sony not in PC Remote, RX / ZV | import as you shoot, with a hint | — |
+| Fujifilm X / GFX | control | control (camera dials the phone) |
+| OM System / Olympus, Panasonic Lumix, Leica | control | — |
+| Pentax, Sigma, Hasselblad, Samsung NX | import as you shoot; capture when the body offers PTP capture | — |
+| Ricoh GR III / IIIx | import | control (HTTP) |
+| GoPro HERO9+ | — | shutter + stills incl. GoPro RAW (Open GoPro API) |
+| Ricoh Theta, Insta360 and other 360° | — | shutter + import (Open Spherical Camera API) |
+| Any other PTP camera | import as you shoot | — |
+| Any camera with FTP upload | — | FTP push into the phone |
+
+Capabilities come from what the body reports (DeviceInfo / API), never from a
+model list. Bodies whose vendor mode is off fall back to import-only instead
+of failing to connect.
+
+## RAW, Files, Capture One and Lightroom
+
+- **RAW**: originals kept byte-for-byte; RAW+JPEG twins stack and keep one
+  base name on export with one XMP sidecar per pair; export RAW as the
+  original or developed (CIRAWFilter) to JPEG, HEIF or 16-bit TIFF.
+- **Files app**: saved folders anywhere in Files (iCloud Drive, servers,
+  USB-C drives) as export destinations; import photos or whole folders with
+  their sidecars; "Open in Open Tether" for photos and catalogs.
+- **Hot folder**: every frame (and its sidecar) is copied into a saved folder
+  as it lands, e.g. a Capture One session's Capture folder or a Lightroom
+  Auto Import folder; culling on the phone rewrites the sidecar there.
+- **Catalogs**: ratings, picks, labels and keywords sync back from a
+  Lightroom Classic `.lrcat` or a Capture One catalog / session, read from a
+  private copy (never written). See `docs/INTEROP.md`.
 
 ## Status
 
 | Piece | State | Verified by |
 |-------|-------|-------------|
-| PTP engine, datasets, PTP/IP transport | Complete | `swift test` (154 across the package) incl. a loopback PTP/IP camera (handshake, multi-packet data, data-out, events, InitFail) |
+| PTP engine, datasets, PTP/IP transport | Complete | `swift test` incl. a loopback PTP/IP camera |
 | USB (ImageCaptureCore) | Written, compile-guarded for Apple | container framing unit-tested; **not run on a device** |
-| Vendor handlers | Written for all eight brands with capability flags from DeviceInfo | scripted-transport tests per vendor; **no real camera yet** |
-| Discovery + SSID monitor | Complete | unit tests with canned SSDP/Bonjour/Fuji payloads, loopback Fuji dial-back |
-| FTP server + clients | Complete (pure-Swift FTP; FTPS via NSStream TLS on Apple; libcurl client linked on Linux through `Sources/CCurl`) | loopback integration tests, incl. libcurl uploading into our own server |
-| Capture pipeline, store, review, export queue, looks | Complete | unit tests (recovery, pairs, show-newest/keep-selection, resumable export, credits quote) |
-| Library: collections, smart filters, tags, between-session memory, undoable batch edits, command registry, automations | Complete | 14 power-user scenario tests (bulk cull + undo, collections under deletes, templates and camera memory across relaunch, auto-export picks, 20k-frame speed) |
-| Interop: XMP (Lightroom / Capture One / Photo Mechanic conventions), EXIF, naming templates, folder layouts, manifests, ingest of incoming XMP | Complete | 9 tests incl. an end-to-end export into a Capture One tree with sidecars, embedded XMP and manifests (`docs/INTEROP.md`) |
-| Cloud backend | Complete | `cargo test` (36), fmt + clippy clean |
-| SwiftUI app | Written; every screen, adaptive iPhone tabs / iPad three-column split, library + collections + inspector, command palette and shortcuts, templates, metadata settings (110+ files) | `swiftc -parse` on Linux only. **Needs Xcode to type-check and a device to run**; expect small fix-ups on the first build |
+| Vendor handlers (PTP and HTTP) | Written; capability flags from the body | scripted-transport / scripted-HTTP tests per brand; **no real camera yet** |
+| Discovery, FTP server + clients | Complete | unit + loopback integration tests |
+| Capture, store, review, export, looks | Complete | unit tests (recovery, pairs, show-newest, resumable export, RAW naming) |
+| Library, interop, Files import, catalogs | Complete | scenario tests, Lightroom / Capture One catalog fixtures |
+| SwiftUI app | Builds in Xcode; walked through in the iOS Simulator (FTP push session, hot folder into a Capture One session, catalog-free looks) | the Xcode app-test target did not start on this machine (simulator runner) |
 
-Nothing has touched a real camera. Every vendor opcode or property code that
-was not certain is marked `// VERIFY` in the vendor's single code table, so
-the first live session with each brand is a one-file fix.
+Nothing has touched a real camera. Every vendor opcode or endpoint that was
+not certain is marked `// VERIFY` in that vendor's code table.
 
 ## Design
 
-`docs/DESIGN.md` is the design system (tokens, type, motion, haptics, signature
-moments). `docs/prototype.html` is an interactive mock of the shoot screen,
-connect flow, client review and export built from those tokens; open it in a
-browser to feel the interactions before building in Xcode.
+`docs/DESIGN.md` is the design system: always dark, graphite with a
+lens-blue accent, flat Liquid Glass surfaces.
 
 ## Build and test
 
 ```sh
-# Engine (Linux or macOS; needs Swift 6.1 and libsqlite3-dev on Linux)
+# Engine (Linux or macOS; Swift 6.1, libsqlite3-dev on Linux)
 cd Packages/TetherCore && swift test
 
-# Backend
-cd backend && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-TETHER_DEV_PURCHASES=1 cargo run        # http://127.0.0.1:8787, see backend/README.md
-
-# App (macOS with Xcode 16)
-cd tether-ios && brew install xcodegen && xcodegen generate && open Tether.xcodeproj
+# App (macOS with Xcode)
+brew install xcodegen && xcodegen generate && open Tether.xcodeproj
 ```
 
-The app's Settings screen points at the backend URL (default
-`http://127.0.0.1:8787` for the simulator). Onboarding registers the device;
-new accounts get 10 free credits a month.
+## Decisions
 
-## The user journey
+- **Core Image / Metal** for looks and RAW development (`CIColorCube`,
+  `CIRAWFilter`).
+- **Data phases on the command connection** for PTP/IP (the standard has no
+  separate data socket).
+- **No writing into Lightroom or Capture One catalogs**: they are
+  undocumented databases the desktop app keeps open. Interop is XMP sidecars,
+  folder layouts those apps watch, and read-only catalog sync.
+- **SFTP is absent by design** (needs libssh2).
 
-1. **Onboarding** — what Tether does, what it never does (no auto-joining a
-   camera's Wi-Fi, no uploads without asking), permissions with real prompts.
-2. **Home** — sessions with counts, resume banner for anything interrupted,
-   New session (name, capture destination card/iPhone/both, routing JPEG →
-   Photos, RAW → Files/cloud, look, workflow tag).
-3. **Connect** — USB-C (recommended), Wi-Fi (SSID check, discovery by brand,
-   manual IP, handshake progress), FTP push (receiver on/off, credentials,
-   per-brand camera instructions, live feed), brand setup guides, and the
-   cable/power diagnostic.
-4. **Shoot** — canvas with *Show Newest Capture* / *Keep Current Selection*,
-   live view, capture (AF / no-AF), exposure bar driven by the camera's own
-   choice lists, filmstrip with download rings and RAW+JPEG pairing, rate /
-   pick / reject / colour.
-5. **Review** — loupe, compare, client review mode (fullscreen, stars and
-   flags round-trip, long-press to leave).
-6. **Library** — every frame from every session. Built-in shelves (All, Picks,
-   Five stars, Unrated, Today, Rejects), your collections, smart collections
-   saved from any filter, tags with autocomplete, RAW+JPEG stacks, a batch
-   bar whose every action is one undo step, a command palette, and an
-   inspector. It reopens on the collection, filter, zoom and frame you left.
-7. **Looks** — cloud looks as 3D LUTs applied on device; AI colour match
-   (1 credit) returns a LUT for the session.
-8. **Export** — scope (all / picks / rated), destination (Photos, Files,
-   Share, FTP, cloud batch), options, a credits quote (“N credits · M
-   watermarked”), resumable progress with pause/retry.
-9. **Credits** — balance, tier, StoreKit packs, free-tier rules.
-10. **Settings** — cloud URL, FTP defaults, PTP transaction log, tested-camera
-   matrix, legal note (generic PTP import is safe; vendor control is the grey
-   area).
-
-## Between-session memory
-
-`WorkspaceMemory` keeps, per install: the last session's destination,
-routing, look and canvas mode; per camera, its last look, destination and
-exposure values plus the template it was used with; per collection, the
-filter, sort, zoom, stacking and the frame you were on; the last export
-destination and options; recent tags, searches and collections; and
-session templates with name patterns (`{date} {name} {camera} {n}`). A new
-session starts from the template this camera used last. Templates can tag
-every frame, drop it into a collection, and auto-export picks as one
-debounced job (`SessionAutomations`).
-
-## Decisions that differ from the blueprint, and why
-
-- **Core Image / Metal instead of OpenGL ES** for the look engine. OpenGL ES
-  has been deprecated on iOS since 12 and is absent on newer platforms;
-  `CIColorCube` consumes the same `.cube` tables (`CubeLUT.colorCubeData`).
-- **Data phases on the command connection.** Standard PTP/IP has two TCP
-  connections; the "data channel" is the StartData/Data/EndData packet family
-  on the command connection, demultiplexed by transaction ID. The blueprint's
-  InitData step does not exist in the standard; the handshake is the four
-  Init packets.
-- **AI retouch pipelines (MNN / ONNX / OpenCV) are not bundled.** They need
-  model weights and prebuilt frameworks that are not in this repo. The
-  `LookRendering` seam is where they plug in.
-- **SFTP is absent by design** (needs libssh2). `FTPSecurity` has no SFTP case.
-- **Watermark** on the server is a tiled pattern plus badge, not text (the
-  `image` crate alone, no font rasteriser). The on-device watermark draws text.
-
-## Open constants (blueprint §6)
+## Open constants
 
 | Item | Chosen | Where |
 |------|--------|-------|
 | PTP/IP TCP port | 15740 | `PTPIPPacket.standardPort` |
-| FTP server port | 2121 default, 0 = ephemeral; passive 40000–40100 | `FTPServerConfiguration` |
-| SSDP | 239.255.255.250:1900, Sony `DigitalImaging:1` + `ScalarWebAPI:1` | `SSDPDiscoverer` |
+| FTP server port | 2121 default; passive 40000–40100 | `FTPServerConfiguration` |
+| SSDP | 239.255.255.250:1900, Sony | `SSDPDiscoverer` |
 | Fuji | UDP 51562 out, TCP 51560 listen (`// VERIFY`) | `FujiDiscoverer` |
-| Ricoh | `http://192.168.0.1/v1/props`, `/v1/camera/shoot`, `ws://…/v1/changes` | `RicohHandler`, `RicohProbe` |
-| USB vendor IDs | Canon 04A9 · Nikon 04B0 · Sony 054C · Fuji 04CB · Ricoh 25FB · Leica 1A98 · Olympus 07B4 · Panasonic 04DA | `CameraVendor.usbVendorID` (pre-filter only; routing is by capability flags) |
-| Downloads | raw PTP only (`GetObject` / `GetPartialObject`, vendor partial opcodes); never `ICCameraFile` | `PTPEngine.download`, vendor `fetchObject` |
-| Colour-match wire format | multipart `reference`/`target`/`strength`/`lut_size` → `.cube` URL | `backend/API.md` |
+| Ricoh GR | `http://192.168.0.1/v1/…` | `RicohHandler`, `RicohProbe` |
+| GoPro | `http://10.5.5.9:8080/gopro/…` | `GoProHandler`, `HTTPCameraProbe` |
+| OSC | `http://192.168.1.1` / `192.168.42.1`, `/osc/…` | `OSCHandler`, `HTTPCameraProbe` |
+| USB vendor IDs | Canon 04A9 · Nikon 04B0 · Sony 054C · Fuji 04CB · Ricoh/Pentax 25FB · Leica 1A98 · Olympus 07B4 · Panasonic 04DA · Sigma 1003 · Samsung 04E8 · Hasselblad 2A5F · GoPro 2672 | `CameraVendor.usbVendorID` (pre-filter only) |
 
 ## Next
 
-1. Run the app from Xcode against a real body of each brand, fix the
-   `// VERIFY` tables, and move entries in `backend/data/tested-cameras.json`
-   from `planned` to `verified`.
-2. Sony Wi-Fi live view (Camera Remote API `liveview` stream) and Canon EVF
-   frame-rate control.
-3. Link libcurl (xcframework) on iOS for FTPS through `CurlFTPClient`, or keep
-   the NSStream path.
-4. Replace the dev-mode purchase trust with App Store Server API verification.
+1. Run against a real body of each brand and fix the `// VERIFY` tables.
+2. Pentax and Sigma remote-control extensions once verified on hardware.
+3. GoPro / OSC live preview.
+4. Link libcurl on iOS for FTPS, or keep the NSStream path.

@@ -26,8 +26,7 @@ struct ToastView: View {
         }
         .padding(.horizontal, TetherSpace.l)
         .padding(.vertical, TetherSpace.m)
-        .background(TetherColor.surface3, in: Capsule())
-        .overlay(Capsule().strokeBorder(TetherColor.hairline, lineWidth: 0.5))
+        .tetherGlass(in: Capsule())
         .accessibilityElement(children: .combine)
     }
 }

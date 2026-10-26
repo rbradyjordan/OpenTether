@@ -31,8 +31,7 @@ struct FTPDestinationsView: View {
                 reload()
             }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("FTP destinations")
         .toolbar { ToolbarItem(placement: .primaryAction) { Button { creating = true } label: { Label("Add", systemImage: "plus") } } }
         .sheet(isPresented: $creating) { FTPDestinationEditor(destination: nil) { reload() } }

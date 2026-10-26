@@ -141,7 +141,7 @@ public actor SessionAutomations {
         do {
             let caps = try store.captures(ids: ids)
             let job = await queue.makeJob(session: session, captures: caps, destination: rules.autoExportDestination,
-                                          options: rules.autoExportOptions, look: LookStack(lookID: session.lookID, strength: session.lookStrength), credits: nil)
+                                          options: rules.autoExportOptions, look: LookStack(lookID: session.lookID, strength: session.lookStrength))
             guard !job.items.isEmpty else { return }
             try await queue.enqueue(job)
             continuation.yield(.exportQueued(job))

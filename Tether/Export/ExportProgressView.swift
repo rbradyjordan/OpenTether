@@ -17,8 +17,7 @@ struct ExportProgressView: View {
             }
             ForEach(jobs) { job in jobRow(job) }
         }
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("Exports")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -47,7 +46,6 @@ struct ExportProgressView: View {
                 ForEach(job.items) { item in
                     HStack {
                         Text(item.filename).font(.caption).lineLimit(1)
-                        if item.watermark { Image(systemName: "drop.halffull").font(.caption2).foregroundStyle(Theme.warning).accessibilityLabel("watermarked") }
                         Spacer()
                         Text(itemState(item.state)).font(.caption2).foregroundStyle(Theme.textSecondary)
                     }
@@ -56,7 +54,7 @@ struct ExportProgressView: View {
             .font(.subheadline)
             HStack {
                 if !job.failedItems.isEmpty || job.status.key == "failed" {
-                    Button("Retry failed") { Task { try? await app.exportQueue.retry(job.id) } }.buttonStyle(.bordered).controlSize(.small)
+                    Button("Retry failed") { Task { try? await app.exportQueue.retry(job.id) } }.buttonStyle(.tetherSecondary).controlSize(.small)
                 }
                 if case .share = job.destination, job.status.key == "completed" {
                     Button("Share files") {
@@ -65,9 +63,8 @@ struct ExportProgressView: View {
                             return nil
                         }
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .buttonStyle(.tetherPrimary).controlSize(.small)
                 }
-                if job.creditsCharged > 0 { Text("\(job.creditsCharged) credits").font(.caption).foregroundStyle(Theme.textSecondary) }
             }
         }
         .padding(.vertical, 4)
@@ -80,7 +77,7 @@ struct ExportProgressView: View {
         case .files: return "folder"
         case .share: return "square.and.arrow.up"
         case .ftp: return "server.rack"
-        case .cloudBatch: return "icloud.and.arrow.up"
+        case .folder: return "folder"
         }
     }
 

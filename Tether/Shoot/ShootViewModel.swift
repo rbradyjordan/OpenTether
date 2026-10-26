@@ -62,13 +62,18 @@ final class ShootViewModel {
     var capabilities: CameraCapabilities { identity?.capabilities ?? [] }
     var canCapture: Bool { capabilities.contains(.remoteCapture) }
     var canLiveView: Bool { capabilities.contains(.liveView) }
+    var canTouchFocus: Bool { capabilities.contains(.touchAutofocus) }
     var canControlProperties: Bool { capabilities.contains(.propertyControl) }
     var isImportOnly: Bool { identity != nil && !canCapture }
     var isLive: Bool { status.isLive }
     var isDisconnected: Bool { if case .disconnected = status { return true }; return false }
     var readyItems: [CaptureItem] { items.filter { $0.state.isReady } }
     var displayedItem: CaptureItem? { items.first { $0.id == selectedItemID } ?? items.last { $0.state.isReady } }
-    var cameraName: String { identity?.displayName ?? (shootSession.transport == .ftpPush ? "FTP receiver" : "No camera") }
+    var cameraName: String {
+        if let identity { return identity.displayName }
+        if shootSession.workflowTag == DemoSession.tag { return "Demo camera" }
+        return shootSession.transport == .ftpPush ? "FTP receiver" : "No camera"
+    }
     var transportName: String { (identity?.transport ?? shootSession.transport)?.displayName ?? "" }
     var batteryText: String? { properties.first { $0.property == .batteryLevel }?.display }
     var exposureDescriptors: [PropertyDescriptor] {
@@ -125,7 +130,7 @@ final class ShootViewModel {
             if case .disconnected(let reason) = s, !isReconnecting, context != .ftp {
                 TetherHaptic.disconnected()
                 toast = ToastMessage(text: reason, systemImage: "bolt.slash")
-                sheet = .reconnect
+                if !reconnectSnoozed { sheet = .reconnect }
             }
         case .capture(let item):
             let previous = items.first { $0.id == item.id }
@@ -134,8 +139,16 @@ final class ShootViewModel {
             if previous == nil || becameReady {
                 Task { await refreshCounters() }
             }
+            // Culling on the phone flows to the hot folder's sidecar (one per
+            // RAW+JPEG pair: the RAW's, else the JPEG's).
+            if let previous, previous.state.isReady, !becameReady,
+               previous.rating != item.rating || previous.flag != item.flag || previous.colorLabel != item.colorLabel,
+               item.kind == .raw || !items.contains(where: { $0.pairKey == item.pairKey && $0.kind == .raw }) {
+                app.refreshHotFolderSidecar(item, session: shootSession)
+            }
             if becameReady {
                 TetherHaptic.frameArrived()
+                app.sendToHotFolder(item, session: shootSession)
                 if !shootSession.showNewestCapture {
                     unseenCount += 1
                     toast = ToastMessage(text: "New frame \(item.filename)", systemImage: "photo.badge.plus", action: "Show")
@@ -181,14 +194,24 @@ final class ShootViewModel {
         }
     }
 
+    /// True from the tap until live view is running (or has failed).
+    private(set) var liveViewStarting = false
+    /// True while live view is being switched off.
+    private(set) var liveViewStopping = false
+
     func toggleLiveView() {
-        guard canLiveView else { return }
+        guard canLiveView, !liveViewStarting, !liveViewStopping else { return }
         Task {
             if liveViewActive {
-                await session.stopLiveView()
+                // Back to the photo at once; the camera catches up behind it.
+                liveViewStopping = true
                 liveViewActive = false
                 liveViewImage = nil
+                await session.stopLiveView()
+                liveViewStopping = false
             } else {
+                liveViewStarting = true
+                defer { liveViewStarting = false }
                 do {
                     try await session.startLiveView(quality: .medium)
                     liveViewActive = true
@@ -199,6 +222,61 @@ final class ShootViewModel {
         }
     }
 
+    /// Where the user last tapped on live view (0…1), shown as the AF box.
+    private(set) var focusPoint: CGPoint?
+    private(set) var focusPointID = 0
+
+    /// What the AF box shows: the camera's own verdict on the last touch.
+    enum FocusIndicator: Equatable { case focusing, focused, failed, unconfirmed, tracking }
+    private(set) var focusIndicator: FocusIndicator = .focusing
+
+    /// Tap: focus once; the box turns green or red on the camera's report.
+    func focus(at point: CGPoint) {
+        guard canTouchFocus, liveViewActive, isLive else { return }
+        let id = beginFocusBox(at: point, .focusing)
+        Task {
+            do {
+                let result = try await session.focus(atNormalizedX: point.x, y: point.y)
+                guard id == focusPointID else { return }
+                switch result {
+                case .focused: focusIndicator = .focused; TetherHaptic.rate()
+                case .failed: focusIndicator = .failed
+                case .unconfirmed: focusIndicator = .unconfirmed
+                }
+            } catch {
+                if id == focusPointID { focusIndicator = .unconfirmed }
+                toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    /// Press and hold: AF tracks in the camera's own mode until the finger lifts.
+    func startTrackingFocus(at point: CGPoint) {
+        guard canTouchFocus, liveViewActive, isLive else { return }
+        let id = beginFocusBox(at: point, .tracking)
+        Task {
+            do { try await session.startTrackingFocus(atNormalizedX: point.x, y: point.y) } catch {
+                if id == focusPointID { focusIndicator = .unconfirmed }
+                toast = ToastMessage(text: "Focus: \(error)", systemImage: "exclamationmark.triangle")
+            }
+        }
+    }
+
+    func stopTrackingFocus() {
+        Task {
+            await session.stopTrackingFocus()
+            if focusIndicator == .tracking { focusIndicator = .unconfirmed }
+        }
+    }
+
+    private func beginFocusBox(at point: CGPoint, _ indicator: FocusIndicator) -> Int {
+        focusPoint = point
+        focusPointID += 1
+        focusIndicator = indicator
+        TetherHaptic.rate()
+        return focusPointID
+    }
+
     func select(_ id: String?) {
         TetherHaptic.rate()
         Task { await session.select(id) }
@@ -207,6 +285,11 @@ final class ShootViewModel {
     func showNewest() {
         unseenCount = 0
         if let latest = items.last(where: { $0.state.isReady }) { select(latest.id) }
+    }
+
+    func updateRouting(_ routing: RoutingRules) {
+        shootSession.routing = routing
+        Task { await session.setRouting(routing) }
     }
 
     func setShowNewestCapture(_ on: Bool) {
@@ -270,21 +353,10 @@ final class ShootViewModel {
         Task { await session.rename(name) }
     }
 
-    /// Files / share-sheet import: copy out of the security scope, then ingest
-    /// like an FTP push (XMP sidecars and embedded packets are adopted there).
+    /// Files / share-sheet import into this session (files or folders,
+    /// sidecars matched); see `AppModel.importFromFiles`.
     func importFiles(_ urls: [URL]) {
-        Task {
-            for url in urls {
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-                try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-                let copy = tmp.appendingPathComponent(url.lastPathComponent)
-                do { try FileManager.default.copyItem(at: url, to: copy) } catch { toast = ToastMessage(text: "\(error)", systemImage: "exclamationmark.triangle"); continue }
-                await session.ingestFile(at: copy, from: "Files")
-            }
-            toast = ToastMessage(text: "Imported \(urls.count) file\(urls.count == 1 ? "" : "s")", systemImage: "square.and.arrow.down")
-        }
+        Task { await app.importFromFiles(urls, into: shootSession) }
     }
 
     func ingestFTPFile(_ url: URL, from: String) async {
@@ -308,8 +380,22 @@ final class ShootViewModel {
         Task {
             let snap = await session.snapshot
             status = snap.status
-            if case .disconnected = snap.status, context != .ftp, sheet == nil { sheet = .reconnect }
+            if case .disconnected = snap.status, context != .ftp, sheet == nil, !reconnectSnoozed { sheet = .reconnect }
         }
+    }
+
+    /// Set when the user puts the reconnect sheet away; it then stays away
+    /// (reconnecting carries on) until they ask for it or the link is back.
+    private(set) var reconnectSnoozed = false
+
+    func snoozeReconnect() {
+        guard isDisconnected || status == .reconnecting else { return }
+        reconnectSnoozed = true
+    }
+
+    func showReconnect() {
+        reconnectSnoozed = false
+        sheet = .reconnect
     }
 
     func reconnect() {
@@ -346,10 +432,13 @@ final class ShootViewModel {
                     connection = try await ConnectionBuilder.connectPTPIP(host: host, port: port, vendorHint: vendor, shoot: shoot, services: services) { _ in }
                 case .retryRicoh(let host):
                     connection = try await ConnectionBuilder.connectRicoh(host: host, shoot: shoot, services: services) { _ in }
+                case .retryHTTP(let host, let vendor):
+                    connection = try await ConnectionBuilder.connectHTTP(vendor: vendor, host: host, shoot: shoot, services: services) { _ in }
                 case .nothingToDo, .startFresh:
                     return
                 }
                 adopt(connection)
+                reconnectSnoozed = false
                 sheet = nil
                 TetherHaptic.connected()
                 toast = ToastMessage(text: "Reconnected to \(cameraName)", systemImage: "checkmark.circle")

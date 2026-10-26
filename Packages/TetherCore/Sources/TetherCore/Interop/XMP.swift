@@ -36,7 +36,7 @@ public struct XMPPacket: Equatable, Sendable {
 
     public init(rating: Int? = nil, label: ColorLabel? = nil, pick: Bool = false, keywords: [String] = [],
                 hierarchicalKeywords: [String] = [], title: String? = nil, caption: String? = nil, headline: String? = nil,
-                creator: String? = nil, copyright: String? = nil, creatorTool: String = "Tether for iOS",
+                creator: String? = nil, copyright: String? = nil, creatorTool: String = "Open Tether for iOS",
                 createDate: Date? = nil, documentID: String? = nil, extraDescriptions: [String] = []) {
         self.rating = rating
         self.label = label
@@ -66,7 +66,7 @@ public struct XMPPacket: Equatable, Sendable {
                   hierarchicalKeywords: profile.hierarchicalRoot.map { root in tags.map { "\(root)|\($0)" } } ?? [],
                   caption: profile.captionTemplate.flatMap { NamingTemplate($0).render(capture: capture, sessionName: sessionName, index: capture.sequence) },
                   headline: sessionName,
-                  creator: profile.creator, copyright: profile.copyright,
+                  creator: profile.creator, copyright: profile.copyrightLine(),
                   createDate: capture.capturedAt, documentID: "xmp.did:tether-\(capture.id)")
     }
 

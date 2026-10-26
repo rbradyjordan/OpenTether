@@ -38,7 +38,7 @@ public enum CameraWiFiHints {
     }
 }
 
-#if canImport(CoreLocation) && canImport(NetworkExtension) && !os(macOS)
+#if canImport(CoreLocation) && canImport(NetworkExtension) && !os(macOS) && !targetEnvironment(macCatalyst)
 /// iOS: when-in-use location permission unlocks `NEHotspotNetwork.fetchCurrent`.
 public final class CoreLocationSSIDMonitor: NSObject, SSIDProviding, CLLocationManagerDelegate, @unchecked Sendable {
     private let manager = CLLocationManager()
@@ -83,7 +83,8 @@ public final class CoreLocationSSIDMonitor: NSObject, SSIDProviding, CLLocationM
     }
 }
 #else
-/// Linux / macOS stub: no SSID access.
+/// Linux / macOS / Mac Catalyst stub: no SSID access (macOS gives apps the
+/// Wi-Fi name only through CoreWLAN plus location, neither of which Catalyst has).
 public final class CoreLocationSSIDMonitor: SSIDProviding, @unchecked Sendable {
     public init() {}
     public var authorizationState: SSIDAuthorization { get async { .unavailable } }

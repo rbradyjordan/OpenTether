@@ -32,7 +32,7 @@ struct TemplateEditor: View {
                 }
                 Section("Routing on export") {
                     Picker("JPEG / HEIF", selection: $template.routing.jpeg) { ForEach([RoutingRules.Target.photos, .files, .none]) { Text($0.displayName).tag($0) } }
-                    Picker("RAW", selection: $template.routing.raw) { ForEach([RoutingRules.Target.files, .cloud, .none]) { Text($0.displayName).tag($0) } }
+                    Picker("RAW", selection: $template.routing.raw) { ForEach([RoutingRules.Target.files, .ftp, .none]) { Text($0.displayName).tag($0) } }
                     Toggle("Export picks automatically", isOn: $template.autoExportPicks)
                 }
                 Section("Every frame gets") {
@@ -48,6 +48,7 @@ struct TemplateEditor: View {
                     Section { Button("Delete template", role: .destructive) { app.memory.deleteTemplate(template.id); dismiss() } }
                 }
             }
+            .tetherList()
             .navigationTitle(isNew ? "Save as template" : "Edit template")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

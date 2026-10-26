@@ -224,6 +224,17 @@ public extension SessionStore {
         }
     }
 
+    /// Exported file names (lowercased, no folder) → capture ID, so a catalog
+    /// that only knows the exported names ("AW26_001.CR3") can be matched back.
+    public func exportedFilenames() throws -> [String: String] {
+        var out: [String: String] = [:]
+        for row in try db.query("SELECT capture_id, remote_id FROM capture_exports WHERE remote_id IS NOT NULL ORDER BY exported_at") {
+            guard let id = row["capture_id"]?.string, let remote = row["remote_id"]?.string else { continue }
+            out[(remote as NSString).lastPathComponent.lowercased()] = id
+        }
+        return out
+    }
+
     // MARK: Library stats
 
     struct LibraryStats: Equatable, Sendable {

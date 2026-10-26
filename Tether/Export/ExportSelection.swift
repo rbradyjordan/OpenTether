@@ -76,14 +76,14 @@ enum ExportScope: Hashable, Identifiable {
 }
 
 enum ExportDestinationChoice: Hashable, Identifiable {
-    case photos, files, share, ftp(String), cloud
+    case photos, files, share, ftp(String), folder(String)
     var id: String {
         switch self {
+        case .folder(let id): return "folder-\(id)"
         case .photos: return "photos"
         case .files: return "files"
         case .share: return "share"
         case .ftp(let id): return "ftp-\(id)"
-        case .cloud: return "cloud"
         }
     }
     var destination: ExportDestination {
@@ -92,7 +92,7 @@ enum ExportDestinationChoice: Hashable, Identifiable {
         case .files: return .files
         case .share: return .share
         case .ftp(let id): return .ftp(destinationID: id)
-        case .cloud: return .cloudBatch
+        case .folder(let id): return .folder(destinationID: id)
         }
     }
 
@@ -102,7 +102,7 @@ enum ExportDestinationChoice: Hashable, Identifiable {
         case .files: self = .files
         case .share: self = .share
         case .ftp(let id): self = .ftp(id)
-        case .cloudBatch: self = .cloud
+        case .folder(let id): self = .folder(id)
         }
     }
 }

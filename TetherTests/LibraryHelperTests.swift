@@ -3,6 +3,13 @@ import XCTest
 @testable import Tether
 
 final class GridMathTests: XCTestCase {
+    func testWideScreensShowMoreColumnsAtTheSameZoom() {
+        XCTAssertEqual(GridMath.displayColumns(zoom: 3, width: 390), 3)     // phone: as set
+        XCTAssertEqual(GridMath.displayColumns(zoom: 3, width: 700), 5)     // iPad portrait beside the sidebar
+        XCTAssertEqual(GridMath.displayColumns(zoom: 2, width: 1000), 5)    // pinch-zoomed in stays larger
+        XCTAssertGreaterThan(GridMath.displayColumns(zoom: 6, width: 1000), GridMath.displayColumns(zoom: 3, width: 1000))
+    }
+
     func testColumnsClampToTwoThroughSix() {
         XCTAssertEqual(GridMath.clampColumns(1), 2)
         XCTAssertEqual(GridMath.clampColumns(4), 4)

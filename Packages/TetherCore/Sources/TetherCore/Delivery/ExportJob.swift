@@ -6,7 +6,9 @@ public enum ExportDestination: Codable, Hashable, Sendable {
     case files
     case share            // handed to the share sheet by the app
     case ftp(destinationID: String)
-    case cloudBatch
+    /// A folder the user picked in Files (iCloud Drive, a server, an SSD…),
+    /// kept as a security-scoped bookmark in `StoredFolderDestination`.
+    case folder(destinationID: String)
 
     public var displayName: String {
         switch self {
@@ -14,7 +16,7 @@ public enum ExportDestination: Codable, Hashable, Sendable {
         case .files: return "Files"
         case .share: return "Share"
         case .ftp: return "FTP"
-        case .cloudBatch: return "Cloud batch"
+        case .folder: return "Folder"
         }
     }
 
@@ -24,14 +26,40 @@ public enum ExportDestination: Codable, Hashable, Sendable {
         case .files: return "files"
         case .share: return "share"
         case .ftp: return "ftp"
-        case .cloudBatch: return "cloud"
+        case .folder: return "folder"
+        }
+    }
+}
+
+/// What happens to RAW files on export (when `includeRAW`).
+public enum RAWOutput: String, Codable, Hashable, Sendable, CaseIterable, Identifiable {
+    /// Byte-for-byte original (plus sidecar): for Lightroom / Capture One.
+    case original
+    /// Developed with the system RAW engine, then encoded.
+    case jpeg, heif, tiff16
+
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .original: return "Original RAW"
+        case .jpeg: return "JPEG"
+        case .heif: return "HEIF"
+        case .tiff16: return "16-bit TIFF"
+        }
+    }
+    /// Extension the delivered file gets (nil = keep the RAW's own).
+    public var fileExtension: String? {
+        switch self {
+        case .original: return nil
+        case .jpeg: return "jpg"
+        case .heif: return "heic"
+        case .tiff16: return "tif"
         }
     }
 }
 
 public struct ExportOptions: Codable, Hashable, Sendable {
     public var applyLook: Bool
-    public var watermark: Bool
     public var maxLongEdge: Int?      // nil = full size
     public var jpegQuality: Double
     public var includeRAW: Bool
@@ -42,12 +70,17 @@ public struct ExportOptions: Codable, Hashable, Sendable {
     public var embedMetadata: Bool        // XMP packet inside exported JPEGs
     public var writeSidecars: Bool        // .xmp next to RAW (and JPEG when the profile asks)
     public var writeManifest: Bool        // session manifest JSON + CSV with the files
+    /// Refresh only the XMP sidecars (ratings changed after the files were
+    /// delivered, e.g. culling on the phone into a Capture One hot folder).
+    public var metadataOnly: Bool
+    /// RAW files: original, or developed to JPEG / HEIF / 16-bit TIFF.
+    public var rawOutput: RAWOutput
 
-    public init(applyLook: Bool = true, watermark: Bool = false, maxLongEdge: Int? = nil, jpegQuality: Double = 0.92,
+    public init(applyLook: Bool = true, maxLongEdge: Int? = nil, jpegQuality: Double = 0.92,
                 includeRAW: Bool = false, filenamePrefix: String? = nil, naming: NamingTemplate = .original,
-                layout: FolderLayout = .flat, embedMetadata: Bool = true, writeSidecars: Bool = true, writeManifest: Bool = false) {
+                layout: FolderLayout = .flat, embedMetadata: Bool = true, writeSidecars: Bool = true, writeManifest: Bool = false,
+                metadataOnly: Bool = false, rawOutput: RAWOutput = .original) {
         self.applyLook = applyLook
-        self.watermark = watermark
         self.maxLongEdge = maxLongEdge
         self.jpegQuality = jpegQuality
         self.includeRAW = includeRAW
@@ -57,17 +90,20 @@ public struct ExportOptions: Codable, Hashable, Sendable {
         self.embedMetadata = embedMetadata
         self.writeSidecars = writeSidecars
         self.writeManifest = writeManifest
+        self.metadataOnly = metadataOnly
+        self.rawOutput = rawOutput
     }
 
     /// Tolerate options saved before the interop fields existed.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         applyLook = try c.decodeIfPresent(Bool.self, forKey: .applyLook) ?? true
-        watermark = try c.decodeIfPresent(Bool.self, forKey: .watermark) ?? false
         maxLongEdge = try c.decodeIfPresent(Int.self, forKey: .maxLongEdge)
         jpegQuality = try c.decodeIfPresent(Double.self, forKey: .jpegQuality) ?? 0.92
         includeRAW = try c.decodeIfPresent(Bool.self, forKey: .includeRAW) ?? false
         filenamePrefix = try c.decodeIfPresent(String.self, forKey: .filenamePrefix)
+        metadataOnly = try c.decodeIfPresent(Bool.self, forKey: .metadataOnly) ?? false
+        rawOutput = try c.decodeIfPresent(RAWOutput.self, forKey: .rawOutput) ?? .original
         naming = try c.decodeIfPresent(NamingTemplate.self, forKey: .naming) ?? .original
         layout = try c.decodeIfPresent(FolderLayout.self, forKey: .layout) ?? .flat
         embedMetadata = try c.decodeIfPresent(Bool.self, forKey: .embedMetadata) ?? true
@@ -99,9 +135,8 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
         public var filename: String
         public var kind: MediaKind
         public var bytes: Int
-        public var watermark: Bool
         public var state: State
-        public var remoteID: String?    // cloud item id / Photos local identifier
+        public var remoteID: String?    // Photos local identifier / delivered path
         /// Interop: the name and relative folder the file is delivered under
         /// (set by the queue from `ExportOptions.naming` / `.layout`).
         public var exportFilename: String?
@@ -109,13 +144,12 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
         /// True for a generated companion (XMP sidecar, manifest), not a photo.
         public var isCompanion: Bool
 
-        public init(id: String, filename: String, kind: MediaKind, bytes: Int, watermark: Bool = false, state: State = .pending, remoteID: String? = nil,
+        public init(id: String, filename: String, kind: MediaKind, bytes: Int, state: State = .pending, remoteID: String? = nil,
                     exportFilename: String? = nil, exportDirectory: String? = nil, isCompanion: Bool = false) {
             self.id = id
             self.filename = filename
             self.kind = kind
             self.bytes = bytes
-            self.watermark = watermark
             self.state = state
             self.remoteID = remoteID
             self.exportFilename = exportFilename
@@ -129,7 +163,6 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
             filename = try c.decode(String.self, forKey: .filename)
             kind = try c.decode(MediaKind.self, forKey: .kind)
             bytes = try c.decode(Int.self, forKey: .bytes)
-            watermark = try c.decodeIfPresent(Bool.self, forKey: .watermark) ?? false
             state = try c.decodeIfPresent(State.self, forKey: .state) ?? .pending
             remoteID = try c.decodeIfPresent(String.self, forKey: .remoteID)
             exportFilename = try c.decodeIfPresent(String.self, forKey: .exportFilename)
@@ -153,13 +186,10 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
     public var createdAt: Date
     public var status: Status
     public var items: [Item]
-    public var creditsCharged: Int
-    public var cloudBatchID: String?
     public var attempts: Int
 
     public init(id: String = UUID().uuidString, sessionID: String, destination: ExportDestination, options: ExportOptions,
-                look: LookStack, createdAt: Date = Date(), status: Status = .queued, items: [Item], creditsCharged: Int = 0,
-                cloudBatchID: String? = nil, attempts: Int = 0) {
+                look: LookStack, createdAt: Date = Date(), status: Status = .queued, items: [Item], attempts: Int = 0) {
         self.id = id
         self.sessionID = sessionID
         self.destination = destination
@@ -168,8 +198,6 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
         self.createdAt = createdAt
         self.status = status
         self.items = items
-        self.creditsCharged = creditsCharged
-        self.cloudBatchID = cloudBatchID
         self.attempts = attempts
     }
 
@@ -189,68 +217,13 @@ public struct ExportJob: Identifiable, Codable, Hashable, Sendable {
     public var failedItems: [Item] { items.filter { if case .failed = $0.state { return true }; return false } }
 }
 
-/// Credits model mirrored from the server so the UI can show the cost before
-/// asking: free tier pays 1 credit per JPEG export and gets a watermark when
-/// the balance is gone; pro pays nothing. AI colour-match is 1 credit.
-public struct CreditsState: Codable, Hashable, Sendable {
-    public enum Tier: String, Codable, Sendable { case free, pro }
-    public var tier: Tier
-    public var balance: Int
-    public var monthlyGrant: Int
-    public var renewsAt: Date?
-    public var fetchedAt: Date
-
-    public init(tier: Tier = .free, balance: Int = 0, monthlyGrant: Int = 10, renewsAt: Date? = nil, fetchedAt: Date = Date()) {
-        self.tier = tier
-        self.balance = balance
-        self.monthlyGrant = monthlyGrant
-        self.renewsAt = renewsAt
-        self.fetchedAt = fetchedAt
-    }
-
-    public var watermarkRequired: Bool { tier == .free && balance <= 0 }
-
-    public struct Quote: Equatable, Sendable {
-        public var credits: Int
-        public var watermarkedItems: Int
-        public var totalItems: Int
-    }
-
-    /// What exporting `items` would cost right now, and how many would carry a watermark.
-    public func quote(for items: [ExportJob.Item], forceWatermark: Bool) -> Quote {
-        if tier == .pro { return Quote(credits: 0, watermarkedItems: forceWatermark ? items.count : 0, totalItems: items.count) }
-        var remaining = balance
-        var credits = 0, watermarked = 0
-        for i in items {
-            if i.kind != .jpeg && i.kind != .heif && i.kind != .jpegXL { continue }
-            if forceWatermark { watermarked += 1; continue }
-            if remaining > 0 { remaining -= 1; credits += 1 } else { watermarked += 1 }
-        }
-        return Quote(credits: credits, watermarkedItems: watermarked, totalItems: items.count)
-    }
-
-    public static let colorMatchCost = 1
-}
-
-/// Credit packs sold through StoreKit; the server applies them.
-public enum CreditProduct: String, CaseIterable, Codable, Sendable, Identifiable {
-    case credits50 = "credits_50"
-    case credits200 = "credits_200"
-    case proMonthly = "pro_monthly"
-
-    public var id: String { rawValue }
-    public var displayName: String {
-        switch self {
-        case .credits50: return "50 credits"
-        case .credits200: return "200 credits"
-        case .proMonthly: return "Pro monthly"
-        }
-    }
-    public var detail: String {
-        switch self {
-        case .credits50: return "50 clean JPEG exports or AI colour matches"
-        case .credits200: return "200 credits, best value"
-        case .proMonthly: return "Unlimited clean exports, no watermark, every look"
-        }
+/// Options for the hot folder (`RoutingRules.liveFolderID`): originals kept
+/// byte-for-byte under their camera names, RAW included, sidecars written
+/// first, laid out the way the folder's tool expects.
+public enum HotFolder {
+    public static func options(for folder: StoredFolderDestination, metadataOnly: Bool = false) -> ExportOptions {
+        ExportOptions(applyLook: false, includeRAW: true, naming: .original,
+                      layout: folder.suggestedLayout ?? .flat, embedMetadata: true, writeSidecars: true, writeManifest: false,
+                      metadataOnly: metadataOnly)
     }
 }

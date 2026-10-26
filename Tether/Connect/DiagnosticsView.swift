@@ -18,9 +18,9 @@ struct DiagnosticsView: View {
             VStack(spacing: 12) {
                 if !wired {
                     SectionCard(title: "Camera to probe", systemImage: "network") {
-                        TextField("Host", text: $host).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        TextField("Host", text: $host).textFieldStyle(.tether).autocorrectionDisabled().textInputAutocapitalization(.never)
                             .accessibilityLabel("Camera host")
-                        TextField("Port", text: $port).textFieldStyle(.roundedBorder).keyboardType(.numberPad).accessibilityLabel("Camera port")
+                        TextField("Port", text: $port).textFieldStyle(.tether).keyboardType(.numberPad).accessibilityLabel("Camera port")
                     }
                 }
                 if let report {
@@ -33,17 +33,17 @@ struct DiagnosticsView: View {
                 } label: {
                     Label(running ? "Checking…" : (report == nil ? "Run diagnostic" : "Run again"), systemImage: "play.fill").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(running)
+                .buttonStyle(.tetherPrimary).controlSize(.large).disabled(running)
                 if let report, report.finishedAt != nil {
                     Button { shareText = ShareText(text: report.shareText) } label: {
                         Label("Share report", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered).controlSize(.large)
+                    .buttonStyle(.tetherSecondary).controlSize(.large)
                 }
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle(wired ? "Cable diagnostic" : "Wireless diagnostic")
         .sheet(item: $shareText) { item in ShareSheet(items: [item.text]) }
         .onAppear {
@@ -158,6 +158,8 @@ struct DiagnosticsView: View {
             battery: { liveBattery },
             powerSource: {
                 await MainActor.run {
+                    // A Mac powers itself; the hint is about a phone's battery.
+                    if MacSupport.isMac { return nil }
                     UIDevice.current.isBatteryMonitoringEnabled = true
                     switch UIDevice.current.batteryState {
                     case .charging, .full: return "iPhone is being charged over the cable"

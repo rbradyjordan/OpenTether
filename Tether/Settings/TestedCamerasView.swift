@@ -1,14 +1,18 @@
 import SwiftUI
 import TetherCore
 
-/// Matrix from the cloud with a built-in fallback when offline.
-struct TestedCamerasView: View {
-    @Environment(AppModel.self) private var app
-    @State private var cameras: [TetherCloudClient.TestedCamera] = TestedCamerasView.fallback
-    @State private var offline = false
-    @State private var query = ""
+/// A camera body and how it connects, for the compatibility list.
+struct TestedCamera: Identifiable, Hashable {
+    var vendor: String, model: String, transports: [String], status: String, notes: String
+    var id: String { "\(vendor)/\(model)" }
+}
 
-    private var filtered: [TetherCloudClient.TestedCamera] {
+/// The compatibility list, shipped with the app.
+struct TestedCamerasView: View {
+    @State private var query = ""
+    private let cameras = TestedCamerasView.list
+
+    private var filtered: [TestedCamera] {
         query.isEmpty ? cameras : cameras.filter { "\($0.vendor) \($0.model) \($0.notes)".localizedCaseInsensitiveContains(query) }
     }
 
@@ -16,9 +20,6 @@ struct TestedCamerasView: View {
 
     var body: some View {
         List {
-            if offline {
-                Text("Showing the built-in list; the cloud was unreachable.").font(.footnote).foregroundStyle(Theme.warning)
-            }
             ForEach(vendors, id: \.self) { vendor in
                 Section(vendor) {
                     ForEach(filtered.filter { $0.vendor == vendor }) { cam in
@@ -37,12 +38,8 @@ struct TestedCamerasView: View {
             }
         }
         .searchable(text: $query, prompt: "Model")
-        .scrollContentBackground(.hidden)
-        .background(Theme.background)
+        .tetherList()
         .navigationTitle("Tested cameras")
-        .task {
-            if let remote = try? await app.cloud.testedCameras(), !remote.isEmpty { cameras = remote } else { offline = true }
-        }
     }
 
     private func color(_ status: String) -> Color {
@@ -53,7 +50,7 @@ struct TestedCamerasView: View {
         }
     }
 
-    static let fallback: [TetherCloudClient.TestedCamera] = [
+    static let list: [TestedCamera] = [
         .init(vendor: "Canon", model: "EOS R5 / R6 / R6 II", transports: ["usb", "ptpip"], status: "expected", notes: "PC / EOS Utility mode"),
         .init(vendor: "Nikon", model: "Z 6II / Z 7II / Z 8", transports: ["usb", "ptpip"], status: "expected", notes: "USB power delivery off"),
         .init(vendor: "Sony", model: "α7 IV / α7R V / α1", transports: ["usb", "ptpip"], status: "expected", notes: "PC Remote, single session"),
@@ -62,15 +59,14 @@ struct TestedCamerasView: View {
         .init(vendor: "Leica", model: "SL2 / Q3 / M11", transports: ["usb"], status: "expected", notes: "USB mode PTP"),
         .init(vendor: "OM System", model: "OM-1 / OM-5", transports: ["usb"], status: "expected", notes: "PC (Tether) mode"),
         .init(vendor: "Panasonic", model: "S5 II / GH6", transports: ["usb"], status: "expected", notes: "USB Mode PC(Tether)"),
+        .init(vendor: "Pentax", model: "K-1 II / K-3 III / KP", transports: ["usb"], status: "expected", notes: "USB Connection: PTP; import, capture if offered"),
+        .init(vendor: "Sigma", model: "fp / fp L / BF", transports: ["usb"], status: "expected", notes: "USB Mode: Camera Control"),
+        .init(vendor: "Hasselblad", model: "X2D / X1D II / 907X", transports: ["usb"], status: "expected", notes: "USB: PTP; import"),
+        .init(vendor: "GoPro", model: "HERO9 – HERO13", transports: ["wifi"], status: "expected", notes: "Open GoPro API; photo mode"),
+        .init(vendor: "Ricoh", model: "Theta X / Z1 / SC2", transports: ["wifi"], status: "expected", notes: "Open Spherical Camera API"),
+        .init(vendor: "Insta360", model: "OSC-capable bodies", transports: ["wifi"], status: "expected", notes: "Open Spherical Camera API"),
+        .init(vendor: "Canon", model: "PowerShot (G series)", transports: ["usb"], status: "expected", notes: "Import as you shoot"),
+        .init(vendor: "Sony", model: "RX100 / RX10 / ZV (not PC Remote)", transports: ["usb"], status: "expected", notes: "Import as you shoot; PC Remote for control"),
+        .init(vendor: "Any brand", model: "PTP over USB", transports: ["usb"], status: "expected", notes: "Import as you shoot"),
     ]
-}
-
-extension TetherCloudClient.TestedCamera {
-    init(vendor: String, model: String, transports: [String], status: String, notes: String) {
-        self.vendor = vendor
-        self.model = model
-        self.transports = transports
-        self.status = status
-        self.notes = notes
-    }
 }

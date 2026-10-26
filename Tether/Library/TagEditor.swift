@@ -91,6 +91,7 @@ struct TagEditorSheet: View {
                               onRemove: { t in added.removeAll { $0 == t } })
                 }
             }
+            .tetherList()
             .navigationTitle("Add tags")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

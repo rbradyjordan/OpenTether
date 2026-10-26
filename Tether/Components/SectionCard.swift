@@ -8,8 +8,8 @@ struct SectionCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: TetherSpace.m) {
             if let title {
-                HStack(spacing: TetherSpace.s) {
-                    if let systemImage { Image(systemName: systemImage).foregroundStyle(TetherColor.accent) }
+                HStack(spacing: TetherSpace.m) {
+                    if let systemImage { IconTile(systemImage: systemImage, size: 30) }
                     Text(title).font(TetherFont.headline).foregroundStyle(TetherColor.ink0)
                 }
                 .accessibilityAddTraits(.isHeader)
@@ -72,10 +72,7 @@ struct ActionCard: View {
 
     var body: some View {
         HStack(spacing: TetherSpace.l) {
-            Image(systemName: systemImage)
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(isLive ? TetherColor.accent : TetherColor.ink1)
-                .frame(width: 40)
+            IconTile(systemImage: systemImage, active: isLive, size: 48)
             VStack(alignment: .leading, spacing: TetherSpace.xs) {
                 HStack(spacing: TetherSpace.s) {
                     Text(title).font(TetherFont.headline).foregroundStyle(TetherColor.ink0)
@@ -90,14 +87,16 @@ struct ActionCard: View {
                 Text(subtitle).font(TetherFont.callout).foregroundStyle(TetherColor.ink1)
             }
             Spacer(minLength: TetherSpace.s)
-            LiveDot(isLive: isLive)
-            Image(systemName: "chevron.right").font(TetherFont.hud).foregroundStyle(TetherColor.ink2)
+            // The dot only appears when there is something to say: a camera is visible on this path.
+            if isLive { LiveDot(isLive: true).transition(.scale.combined(with: .opacity)) }
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(TetherColor.ink2)
         }
         .padding(TetherSpace.l)
         .frame(minHeight: 72)
         .tetherCard()
         .contentShape(Rectangle())
         .tetherAnimation(TetherMotion.snap, value: badge)
+        .tetherAnimation(TetherMotion.snap, value: isLive)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(.isButton)

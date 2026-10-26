@@ -29,8 +29,7 @@ struct LibrarySidebar: View {
             if !library.cameras.isEmpty { camerasSection }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .background(TetherColor.surface1)
+        .tetherList()
         .sheet(item: $editing) { c in CollectionEditor(draft: c, library: library) }
         .sheet(item: $newKind) { kind in CollectionEditor(draft: newDraft(kind), library: library) }
         .alert("Rename collection", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {

@@ -39,8 +39,9 @@ struct LibraryGrid: View {
     }
 
     private func grid(width: CGFloat) -> some View {
-        let side = GridMath.tileSide(width: width, columns: model.columns)
-        return LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: GridMath.spacing), count: model.columns), spacing: GridMath.spacing) {
+        let cols = GridMath.displayColumns(zoom: model.columns, width: width)
+        let side = GridMath.tileSide(width: width, columns: cols)
+        return LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: GridMath.spacing), count: cols), spacing: GridMath.spacing) {
             ForEach(model.stacks) { stack in
                 ForEach(tiles(for: stack)) { item in
                     LibraryTile(item: item, stack: stack, model: model, side: side)
@@ -87,9 +88,9 @@ struct LibraryGrid: View {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
             .onChanged { value in
                 let ids = model.visibleIDs
-                guard let i = GridMath.index(at: adjusted(value.location), width: gridWidth, columns: model.columns, count: ids.count) else { return }
+                guard let i = GridMath.index(at: adjusted(value.location), width: gridWidth, columns: GridMath.displayColumns(zoom: model.columns, width: gridWidth), count: ids.count) else { return }
                 if dragAnchor == nil {
-                    dragAnchor = GridMath.index(at: adjusted(value.startLocation), width: gridWidth, columns: model.columns, count: ids.count) ?? i
+                    dragAnchor = GridMath.index(at: adjusted(value.startLocation), width: gridWidth, columns: GridMath.displayColumns(zoom: model.columns, width: gridWidth), count: ids.count) ?? i
                     dragBase = model.selection
                 }
                 guard let anchor = dragAnchor, var next = dragBase else { return }

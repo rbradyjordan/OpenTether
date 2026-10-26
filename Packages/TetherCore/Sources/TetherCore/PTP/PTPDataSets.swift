@@ -218,7 +218,9 @@ public struct PTPObjectInfo: Equatable, Sendable {
 
 public enum MediaKind: String, Codable, Sendable, CaseIterable {
     case jpeg, heif, raw, jpegXL, video, other
-    public static let rawExtensions: Set<String> = ["cr2", "cr3", "crw", "nef", "nrw", "arw", "sr2", "raf", "orf", "rw2", "dng", "3fr", "fff", "pef", "x3f", "iiq"]
+    public static let rawExtensions: Set<String> = ["cr2", "cr3", "crw", "nef", "nrw", "arw", "sr2", "raf", "orf", "rw2", "dng", "3fr", "fff", "pef", "x3f", "iiq",
+                                                         // Samsung, Leica, Epson, Leaf/Mamiya, Minolta, Kodak, GoPro, Phase One
+                                                         "srw", "rwl", "erf", "mos", "mef", "mrw", "kdc", "dcr", "gpr", "cap", "eip"]
     public var isStill: Bool { self != .video && self != .other }
 }
 

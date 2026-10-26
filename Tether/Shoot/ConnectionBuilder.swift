@@ -66,18 +66,32 @@ enum ConnectionBuilder {
 
     static func connectRicoh(host: String, shoot: ShootSession, services: AppServices,
                              progress: @escaping Progress) async throws -> LiveConnection {
+        try await connectHTTP(vendor: .ricoh, host: host, shoot: shoot, services: services, progress: progress)
+    }
+
+    /// Cameras controlled over HTTP on their own Wi-Fi: Ricoh GR, GoPro,
+    /// and 360° cameras speaking the Open Spherical Camera API.
+    static func connectHTTP(vendor: CameraVendor, host: String, shoot: ShootSession, services: AppServices,
+                            progress: @escaping Progress) async throws -> LiveConnection {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let base = URL(string: "http://\(trimmed)"), !trimmed.isEmpty else { throw ConnectError.badHost(host) }
-        let handler = RicohHandler(baseURL: base)
+        let handler: any HTTPCameraHandler
+        switch vendor {
+        case .gopro: handler = GoProHandler(baseURL: base)
+        case .osc: handler = OSCHandler(baseURL: base)
+        default: handler = RicohHandler(baseURL: base)
+        }
         await progress(.link)
         let identity = try await handler.probeIdentity()
         await progress(.deviceInfo)
-        let session = try makeSession(shoot: shoot, identity: identity, transport: .ricohHTTP, host: trimmed,
+        let transport: TransportKind = vendor == .ricoh ? .ricohHTTP : .http
+        let session = try makeSession(shoot: shoot, identity: identity, transport: transport, host: trimmed,
                                       handler: handler, engine: nil, services: services)
         await progress(.vendorGate)
         try await session.start()
         await progress(.ready)
-        return LiveConnection(session: session, shoot: await session.session, identity: identity, context: .ricoh(host: trimmed))
+        let context: ReconnectContext = vendor == .ricoh ? .ricoh(host: trimmed) : .http(host: trimmed, vendor: vendor)
+        return LiveConnection(session: session, shoot: await session.session, identity: identity, context: context)
     }
 
     /// FTP push: no camera link, the session only ingests files the receiver hands it.

@@ -26,11 +26,11 @@ struct SessionDetailView: View {
                             .font(.footnote).foregroundStyle(Theme.textSecondary)
                         HStack {
                             if session.status != .ended {
-                                Button { app.resume(session) } label: { Label("Resume", systemImage: "play.fill") }.buttonStyle(.borderedProminent)
+                                Button { app.resume(session) } label: { Label("Resume", systemImage: "play.fill") }.buttonStyle(.tetherPrimary)
                             }
-                            Button { showExport = true } label: { Label("Export", systemImage: "square.and.arrow.up") }.buttonStyle(.bordered)
+                            Button { showExport = true } label: { Label("Export", systemImage: "square.and.arrow.up") }.buttonStyle(.tetherSecondary)
                                 .disabled(items.filter { $0.state.isReady }.isEmpty)
-                            NavigationLink(value: AppRoute.exportProgress(sessionID: session.id)) { Label("Exports", systemImage: "list.bullet") }.buttonStyle(.bordered)
+                            NavigationLink(value: AppRoute.exportProgress(sessionID: session.id)) { Label("Exports", systemImage: "list.bullet") }.buttonStyle(.tetherSecondary)
                         }
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 4)], spacing: 4) {
@@ -57,7 +57,7 @@ struct SessionDetailView: View {
                 EmptyState(systemImage: "questionmark.folder", title: "Session not found", message: "")
             }
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle(session?.name ?? "Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -79,11 +79,10 @@ struct SessionDetailView: View {
         .alert("Rename session", isPresented: $renaming) {
             TextField("Name", text: $newName)
             Button("Save") {
-                guard var s = session, !newName.isEmpty else { return }
-                s.name = newName
-                try? app.store.save(s)
+                guard var s = session, !newName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                app.renameSession(s, to: newName)
+                s.name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                 session = s
-                app.reloadSessions()
             }
             Button("Cancel", role: .cancel) {}
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import TetherCore
 
 /// The one place the layout forks: compact width gets tabs, regular width
 /// gets the split view. Both reuse the same child screens.
@@ -17,11 +18,41 @@ struct RootView: View {
                 CompactRootView()
             }
         }
-        .background(TetherColor.surface1)
+        .background(ScreenBackground())
         .toast($app.toast)
+        .sheet(item: Binding(get: { app.pendingCatalog.map(IdentifiedURL.init) }, set: { app.pendingCatalog = $0?.url })) { item in
+            CatalogSyncSheet(catalogURL: item.url)
+        }
+        // "Open in Open Tether" from Files or another app: catalogs sync,
+        // photos (and folders) import.
+        .onOpenURL { url in
+            if CatalogKind.detect(url) != nil {
+                app.pendingCatalog = url
+            } else if url.isFileURL {
+                app.selectedTab = .library
+                Task { await app.importFromFiles([url]) }
+            }
+        }
         .commandRequests()
+        #if DEBUG
+        .task { await DemoShoot.startIfRequested(app) }
+        #endif
     }
 }
+
+#if DEBUG
+/// Simulator screenshots: `simctl launch … -OTDemoShoot [-OTLandscape]`.
+enum DemoShoot {
+    @MainActor static func startIfRequested(_ app: AppModel) async {
+        if ProcessInfo.processInfo.arguments.contains("-OTLandscape"),
+           let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+        }
+        guard ProcessInfo.processInfo.arguments.contains("-OTDemoShoot") else { return }
+        await DemoSession.start(app, pace: 0)
+    }
+}
+#endif
 
 /// iPhone: Shoot (or Connect), Library, Sessions, Settings.
 private struct CompactRootView: View {

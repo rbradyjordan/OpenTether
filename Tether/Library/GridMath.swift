@@ -18,6 +18,15 @@ enum GridMath {
         return clampColumns(Int((Double(base) / Double(scale)).rounded()))
     }
 
+    /// The zoom level is "columns on a phone"; wider screens show
+    /// proportionally more so tiles stay about the same size (iPad, Split View).
+    static let phoneWidth: CGFloat = 400
+
+    static func displayColumns(zoom: Int, width: CGFloat) -> Int {
+        guard width > phoneWidth * 1.5 else { return max(1, zoom) }
+        return max(zoom, Int((CGFloat(zoom) * width / phoneWidth).rounded()))
+    }
+
     static func tileSide(width: CGFloat, columns: Int, spacing: CGFloat = GridMath.spacing) -> CGFloat {
         let cols = max(1, columns)
         return max(0, (width - spacing * CGFloat(cols - 1)) / CGFloat(cols))

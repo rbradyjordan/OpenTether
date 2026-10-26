@@ -11,9 +11,11 @@ struct UndoRedoButtons: View {
         Button { app.commands.undo() } label: { Label(model.undoTitle.map { "Undo \($0)" } ?? "Undo", systemImage: "arrow.uturn.backward") }
             .disabled(model.undoTitle == nil)
             .accessibilityLabel(model.undoTitle.map { "Undo \($0)" } ?? "Nothing to undo")
+            .macToolbarTint()
         Button { app.commands.redo() } label: { Label(model.redoTitle.map { "Redo \($0)" } ?? "Redo", systemImage: "arrow.uturn.forward") }
             .disabled(model.redoTitle == nil)
             .accessibilityLabel(model.redoTitle.map { "Redo \($0)" } ?? "Nothing to redo")
+            .macToolbarTint()
     }
 }
 

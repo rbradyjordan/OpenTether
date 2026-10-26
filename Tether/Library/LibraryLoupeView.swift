@@ -34,7 +34,7 @@ struct LibraryLoupeView: View {
     }
 
     private func single(_ item: CaptureItem) -> some View {
-        ZoomableImage(cache: app.cache, relativePath: item.previewRelativePath ?? item.thumbnailRelativePath)
+        CachedZoomableImage(cache: app.cache, relativePath: item.previewRelativePath ?? item.thumbnailRelativePath)
             .ignoresSafeArea()
             .onTapGesture { withAnimation(Motion.spring(TetherMotion.snap, reduce: reduceMotion)) { showInfo.toggle() } }
             .gesture(swipe(item))

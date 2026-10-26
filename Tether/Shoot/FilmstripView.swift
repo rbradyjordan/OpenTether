@@ -1,35 +1,31 @@
 import SwiftUI
 import TetherCore
 
-/// Horizontal strip of captures. New frames slide in from the right at 0.9
+/// Strip of captures: a row under the photo, or a column beside it on iPad
+/// in landscape. New frames slide in from the trailing (bottom) end at 0.9
 /// scale with a download ring; with "Keep selection" on, a count badge
 /// increments instead of the canvas changing.
 struct FilmstripView: View {
     @Environment(AppModel.self) private var app
     var model: ShootViewModel
+    /// A column, newest at the bottom, for iPad landscape.
+    var vertical = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var newestEdge: UnitPoint { vertical ? .bottom : .trailing }
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: TetherSpace.s) {
-                    ForEach(model.items) { item in
-                        FilmstripCell(item: item, selected: item.id == model.displayedItem?.id,
-                                      pairCount: model.pairCount(for: item), cache: model.renderCache.proxyCache)
-                            .id(item.id)
-                            .onTapGesture { model.select(item.id) }
-                            .contextMenu {
-                                CommandMenuContent(commands: app.commands.available(selection: [item.id], inShoot: true), exclude: ["select.", "camera.", "session."]) { cmd in
-                                    app.commands.preferShootSurface = true
-                                    app.commands.run(cmd, on: [item.id])
-                                    app.commands.preferShootSurface = false
-                                }
-                            }
-                            .transition(arrival)
+            ScrollView(vertical ? .vertical : .horizontal, showsIndicators: false) {
+                Group {
+                    if vertical {
+                        LazyVStack(spacing: TetherSpace.s) { cells }
+                    } else {
+                        LazyHStack(spacing: TetherSpace.s) { cells }
                     }
                 }
-                .padding(.horizontal, TetherSpace.m)
-                .padding(.vertical, TetherSpace.s)
+                .padding(.horizontal, vertical ? TetherSpace.s : TetherSpace.m)
+                .padding(.vertical, vertical ? TetherSpace.m : TetherSpace.s)
                 .animation(Motion.spring(TetherMotion.arrive, reduce: reduceMotion), value: model.items.count)
             }
             .onChange(of: model.displayedItem?.id) { _, id in
@@ -38,19 +34,36 @@ struct FilmstripView: View {
             .onChange(of: model.items.count) { _, _ in
                 // Keep the newest frame in view when it arrives and we are following it.
                 if model.shootSession.showNewestCapture, let last = model.items.last {
-                    withAnimation(Motion.spring(TetherMotion.arrive, reduce: reduceMotion)) { proxy.scrollTo(last.id, anchor: .trailing) }
+                    withAnimation(Motion.spring(TetherMotion.arrive, reduce: reduceMotion)) { proxy.scrollTo(last.id, anchor: newestEdge) }
                 }
             }
         }
-        .overlay(alignment: .topTrailing) { unseenBadge }
+        .overlay(alignment: vertical ? .bottom : .topTrailing) { unseenBadge }
         .background(TetherColor.surface0)
         .accessibilityLabel("Filmstrip, \(model.items.count) captures")
+    }
+
+    @ViewBuilder private var cells: some View {
+        ForEach(model.items) { item in
+            FilmstripCell(item: item, selected: item.id == model.displayedItem?.id,
+                          pairCount: model.pairCount(for: item), cache: model.renderCache.proxyCache)
+                .id(item.id)
+                .onTapGesture { model.select(item.id) }
+                .contextMenu {
+                    CommandMenuContent(commands: app.commands.available(selection: [item.id], inShoot: true), exclude: ["select.", "camera.", "session."]) { cmd in
+                        app.commands.preferShootSurface = true
+                        app.commands.run(cmd, on: [item.id])
+                        app.commands.preferShootSurface = false
+                    }
+                }
+                .transition(arrival)
+        }
     }
 
     private var arrival: AnyTransition {
         if reduceMotion { return .opacity }
         return .asymmetric(
-            insertion: .move(edge: .trailing).combined(with: .scale(scale: 0.9)).combined(with: .opacity),
+            insertion: .move(edge: vertical ? .bottom : .trailing).combined(with: .scale(scale: 0.9)).combined(with: .opacity),
             removal: .opacity
         )
     }
@@ -70,7 +83,7 @@ struct FilmstripView: View {
                 .frame(minHeight: TetherHit.min)
             }
             .buttonStyle(.plain)
-            .padding(.trailing, TetherSpace.m)
+            .padding(vertical ? .bottom : .trailing, vertical ? TetherSpace.s : TetherSpace.m)
             .transition(.scale(scale: 0.8).combined(with: .opacity))
             .tetherAnimation(TetherMotion.snap, value: model.unseenCount)
             .accessibilityLabel("\(model.unseenCount) new frames")

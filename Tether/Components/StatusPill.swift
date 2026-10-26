@@ -55,8 +55,7 @@ struct StatusPill: View {
         }
         .padding(.horizontal, TetherSpace.m)
         .frame(minHeight: 32)
-        .background(TetherColor.surface2, in: Capsule())
-        .overlay(Capsule().strokeBorder(TetherColor.hairline, lineWidth: 0.5))
+        .tetherGlass(in: Capsule(), interactive: true)
         .frame(minHeight: TetherHit.min)
         .contentShape(Rectangle())
         .tetherAnimation(TetherMotion.snap, value: downloads)

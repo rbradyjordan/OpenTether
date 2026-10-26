@@ -17,6 +17,8 @@ struct NewSessionSheet: View {
     @State private var rawTarget: RoutingRules.Target = .files
     @State private var lookID: String?
     @State private var autoExportPicks = false
+    @State private var liveFolderID: String?
+    @State private var folders: [StoredFolderDestination] = []
     @State private var workflowTag = ""
     @State private var editingTemplate: WorkspaceMemory.SessionTemplate?
 
@@ -35,9 +37,18 @@ struct NewSessionSheet: View {
                 Section {
                     Picker("Capture destination", selection: $destination) { ForEach(CaptureDestination.allCases) { d in Text(d.displayName).tag(d) } }
                 } header: { Text("Where the camera writes") } footer: { Text(destinationHelp) }
+                Section {
+                    Picker("Copy every frame to", selection: $liveFolderID) {
+                        Text("Nowhere (keep on the phone)").tag(String?.none)
+                        ForEach(folders) { f in Text(f.name).tag(String?.some(f.id)) }
+                    }
+                    NavigationLink("Saved folders", value: AppRoute.folderDestinations)
+                } header: { Text("Hot folder") } footer: {
+                    Text("Each frame and its sidecar is copied there the moment it lands: a Capture One session, a Lightroom Auto Import folder, iCloud Drive or a server.")
+                }
                 Section("Routing on export") {
                     Picker("JPEG / HEIF", selection: $jpegTarget) { targets([.photos, .files, .none]) }
-                    Picker("RAW", selection: $rawTarget) { targets([.files, .cloud, .none]) }
+                    Picker("RAW", selection: $rawTarget) { targets([.files, .ftp, .none]) }
                     Toggle("Export picks automatically", isOn: $autoExportPicks)
                 }
                 Section("Look") {
@@ -47,6 +58,7 @@ struct NewSessionSheet: View {
                     }
                 }
             }
+            .tetherList()
             .navigationTitle("New session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -54,7 +66,11 @@ struct NewSessionSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Create") { create() } }
             }
             .sheet(item: $editingTemplate) { t in TemplateEditor(template: t, isNew: false) }
-            .onAppear { applyStart(initial: true) }
+            .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
+            .onAppear {
+                folders = (try? app.store.folderDestinations()) ?? []
+                applyStart(initial: true)
+            }
             .onChange(of: start) { _, _ in applyStart(initial: false) }
         }
     }
@@ -63,7 +79,7 @@ struct NewSessionSheet: View {
 
     private var destinationHelp: String {
         switch destination {
-        case .card: return "Frames stay on the card. Tether still lists them when the camera announces them but downloads nothing; good for speed on slow links."
+        case .card: return "Frames stay on the card. Open Tether still lists them when the camera announces them but downloads nothing; good for speed on slow links."
         case .host: return "Frames go straight to the phone and are not written to the card. Fast, but a crash before download loses the frame."
         case .both: return "The camera writes the card and sends a copy. Safest choice."
         }
@@ -91,7 +107,7 @@ struct NewSessionSheet: View {
     }
 
     private func create() {
-        var session = ShootSession(name: "", destination: destination, routing: RoutingRules(jpeg: jpegTarget, raw: rawTarget, autoExportPicks: autoExportPicks),
+        var session = ShootSession(name: "", destination: destination, routing: RoutingRules(jpeg: jpegTarget, raw: rawTarget, autoExportPicks: autoExportPicks, liveFolderID: liveFolderID),
                                    lookID: lookID, workflowTag: workflowTag.isEmpty ? nil : workflowTag)
         if case .template(let id) = start, let t = templates.first(where: { $0.id == id }) {
             app.memory.configure(&session, with: t, camera: camera, index: index)
@@ -100,7 +116,7 @@ struct NewSessionSheet: View {
         }
         // The form's edits win over whatever the template or memory set.
         session.destination = destination
-        session.routing = RoutingRules(jpeg: jpegTarget, raw: rawTarget, autoExportPicks: autoExportPicks)
+        session.routing = RoutingRules(jpeg: jpegTarget, raw: rawTarget, autoExportPicks: autoExportPicks, liveFolderID: liveFolderID)
         session.lookID = lookID
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         session.name = trimmed.isEmpty ? "Untitled shoot" : trimmed

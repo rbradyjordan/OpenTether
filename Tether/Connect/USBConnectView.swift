@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import TetherCore
 
 struct USBConnectView: View {
@@ -15,7 +16,7 @@ struct USBConnectView: View {
             }
             .padding(16)
         }
-        .background(Theme.background)
+        .tetherScreen()
         .navigationTitle("USB-C")
         .onAppear {
             if model == nil { model = USBConnectViewModel(browser: app.services.usbBrowser) }
@@ -34,7 +35,15 @@ struct USBConnectView: View {
                 Text(model.authorization.summary).font(.subheadline)
                 Spacer()
                 if !model.authorization.canSendPTP {
-                    Button("Allow") { model.requestAuthorizations() }.buttonStyle(.bordered).controlSize(.small)
+                    if model.authorization.isDenied {
+                        // iOS never asks twice; the switch lives in Settings.
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                        .buttonStyle(.tetherSecondary).controlSize(.small)
+                    } else {
+                        Button("Allow") { model.requestAuthorizations() }.buttonStyle(.tetherSecondary).controlSize(.small)
+                    }
                 }
             }
         }
@@ -47,8 +56,11 @@ struct USBConnectView: View {
             if model.devices.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack { ProgressView().controlSize(.small); Text("Looking for a camera…").font(.subheadline) }
-                    Text("Use a data-capable USB-C cable and set the camera's USB mode to PC Remote / PTP. No hubs for the first try.")
+                    Text("Switch the camera on with a memory card inserted (iOS ignores cameras with no card), turn its Wi-Fi and Bluetooth off, and use a data-capable USB-C cable straight into the phone.")
                         .font(.footnote).foregroundStyle(Theme.textSecondary)
+                    Label("If your camera doesn't appear, try disconnecting and reconnecting the USB-C cable.", systemImage: "cable.connector")
+                        .font(.footnote.weight(.medium)).foregroundStyle(TetherColor.ink0)
+                    Text(model.statusLine).font(TetherFont.hud).foregroundStyle(TetherColor.ink2).textSelection(.enabled)
                 }
             } else {
                 ForEach(model.devices) { device in
@@ -65,7 +77,7 @@ struct USBConnectView: View {
                         Button("Connect") {
                             model.connect(device, shoot: SessionPickerField.resolve(session, app: app), app: app)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.tetherPrimary)
                         .disabled(model.isConnecting || !model.authorization.canSendPTP)
                         .accessibilityLabel("Connect to \(device.name)")
                     }

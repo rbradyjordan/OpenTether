@@ -12,8 +12,13 @@ final class PhotosExportSink: ExportSink, @unchecked Sendable {
         if item.isCompanion { return nil }
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { throw PhotosSinkError.notAuthorized }
-        let albumName = sessionName(for: item) ?? "Tether"
-        let album = try await ensureAlbum(named: albumName)
+        // Add-only access can save photos but can't see or create albums, so
+        // the session album is a bonus when full access was already granted
+        // (never asked for here), and a failure there never fails the export.
+        var album: PHAssetCollection?
+        if PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized {
+            album = try? await ensureAlbum(named: sessionName(for: item) ?? "Open Tether")
+        }
         var localID: String?
         try await PHPhotoLibrary.shared().performChanges {
             guard let request = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: fileURL) else { return }
@@ -48,5 +53,5 @@ final class PhotosExportSink: ExportSink, @unchecked Sendable {
 
 enum PhotosSinkError: Error, CustomStringConvertible {
     case notAuthorized
-    var description: String { "Tether is not allowed to add to your photo library. Enable it in Settings → Privacy → Photos." }
+    var description: String { "Open Tether is not allowed to add to your photo library. Enable it in Settings → Privacy → Photos." }
 }

@@ -8,15 +8,19 @@ public struct PTPRequest: Equatable, Sendable {
     public var dataOut: Data?
     public var expectsLargeData: Bool
     public var timeout: TimeInterval
+    /// Retry DeviceBusy with backoff (commands). Polls like live-view frames
+    /// turn it off: there, busy just means "nothing new yet".
+    public var retriesBusy: Bool
 
     public init(_ code: PTPOperationCode, parameters: [UInt32] = [], dataOut: Data? = nil,
-                expectsLargeData: Bool = false, timeout: TimeInterval = 10) {
+                expectsLargeData: Bool = false, timeout: TimeInterval = 10, retriesBusy: Bool = true) {
         precondition(parameters.count <= 5)
         self.code = code
         self.parameters = parameters
         self.dataOut = dataOut
         self.expectsLargeData = expectsLargeData
         self.timeout = timeout
+        self.retriesBusy = retriesBusy
     }
 }
 

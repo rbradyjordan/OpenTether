@@ -2,7 +2,7 @@ import SwiftUI
 import TetherCore
 
 /// Large session card: name, meta line, counts, and a 3-up strip of the
-/// newest frames. Follows the system scheme (Home is a light screen).
+/// newest frames.
 struct SessionCard: View {
     @Environment(AppModel.self) private var app
     var session: ShootSession
@@ -47,7 +47,7 @@ struct SessionCard: View {
     private var icon: String {
         switch session.transport {
         case .usb?: return "cable.connector"
-        case .ptpip?, .ricohHTTP?: return "wifi"
+        case .ptpip?, .ricohHTTP?, .http?: return "wifi"
         case .ftpPush?: return "arrow.down.doc"
         case nil: return "rectangle.stack"
         }

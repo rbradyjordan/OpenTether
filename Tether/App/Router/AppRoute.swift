@@ -14,7 +14,6 @@ enum AppRoute: Hashable {
     case brandGuide(CameraVendor)
     case diagnostics(wired: Bool)
     case sessionDetail(String)
-    case credits
     case ftpDestinations
     case exportProgress(sessionID: String?)
     case ptpLog
@@ -22,6 +21,7 @@ enum AppRoute: Hashable {
     case privacy
     case about
     case metadata
+    case folderDestinations
 }
 
 /// Sheets presented from the shoot screen.

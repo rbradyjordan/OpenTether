@@ -171,7 +171,6 @@ struct FilterChips: View {
             Button("To Photos") { filter.exportedTo = .photos }
             Button("To Files") { filter.exportedTo = .files }
             Button("To FTP") { filter.exportedTo = .ftp }
-            Button("To cloud") { filter.exportedTo = .cloud }
             Button("Either") { filter.exportedTo = nil }
         } label: { chipLabel(exportedTitle, "square.and.arrow.up") }
             .buttonStyle(ChipStyle(selected: filter.exportedTo != nil))

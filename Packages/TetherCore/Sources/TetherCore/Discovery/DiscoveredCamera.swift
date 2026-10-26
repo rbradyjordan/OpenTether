@@ -1,7 +1,7 @@
 import Foundation
 
 public enum DiscoveryMethod: String, Codable, Sendable {
-    case ssdp, bonjour, fujiUDP, ricohHTTP, manual
+    case ssdp, bonjour, fujiUDP, ricohHTTP, httpProbe, manual
 }
 
 /// A camera seen on the network but not yet connected. `id` is the dedupe

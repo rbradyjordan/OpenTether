@@ -85,12 +85,38 @@ final class CanonVendorTests: XCTestCase {
         rig.transport.okAll()
         let h = CanonHandler(engine: rig.engine, info: rig.info)
         try await h.capture(autofocus: true)
-        XCTAssertEqual(rig.codes, [CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOff, CanonCodes.Op.remoteReleaseOff])
-        XCTAssertEqual(rig.requests.map(\.parameters), [[1, 0], [2, 0], [2], [1]])
+        // Queued events are drained first (EOS bodies report busy otherwise).
+        XCTAssertEqual(rig.codes, [CanonCodes.Op.getEvent, CanonCodes.Op.remoteReleaseOn, CanonCodes.Op.remoteReleaseOn,
+                                   CanonCodes.Op.remoteReleaseOff, CanonCodes.Op.remoteReleaseOff])
+        XCTAssertEqual(rig.requests.map(\.parameters), [[], [1, 0], [2, 0], [2], [1]])
         let rig2 = try await VendorRig(VendorFixtures.canon)
         rig2.transport.okAll()
         try await CanonHandler(engine: rig2.engine, info: rig2.info).capture(autofocus: false)
-        XCTAssertEqual(rig2.requests.map(\.parameters), [[3, 0], [3]])
+        XCTAssertEqual(rig2.requests.map(\.parameters), [[], [3, 0], [3]])
+    }
+
+    func testRefusedAutofocusFallsBackToFiringWithoutAF() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        rig.transport.on(CanonCodes.Op.remoteReleaseOn) { req in req.parameters == [1, 0] ? .fail(.deviceBusy) : .ok() }
+        try await CanonHandler(engine: rig.engine, info: rig.info).capture(autofocus: true)
+        let presses = rig.requests.filter { $0.code == CanonCodes.Op.remoteReleaseOn || $0.code == CanonCodes.Op.remoteReleaseOff }
+        XCTAssertEqual(presses.last?.code, CanonCodes.Op.remoteReleaseOff)
+        XCTAssertEqual(presses.last?.parameters, [3], "fired without AF and let go")
+        XCTAssertTrue(presses.contains { $0.code == CanonCodes.Op.remoteReleaseOff && $0.parameters == [1] }, "the refused half-press is released")
+    }
+
+    func testCameraThatWillNotFireExplainsWhy() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        rig.transport.on(CanonCodes.Op.remoteReleaseOn) { _ in .fail(.deviceBusy) }
+        do {
+            try await CanonHandler(engine: rig.engine, info: rig.info).capture(autofocus: false)
+            XCTFail("should throw")
+        } catch {
+            XCTAssertTrue("\(error)".contains("lens"), "plain explanation, not DeviceBusy")
+        }
+        XCTAssertEqual(CanonCodes.display(prop: CanonCodes.Prop.aperture, value: 0), "—")
     }
 
     func testCaptureFallsBackToRemoteRelease() async throws {
@@ -123,6 +149,43 @@ final class CanonVendorTests: XCTestCase {
         XCTAssertEqual(events[3], .cameraBusy(true))
         XCTAssertEqual(h.values[CanonCodes.Prop.iso], 0x50)
         XCTAssertEqual(h.available[CanonCodes.Prop.iso], [0x48, 0x50, 0x58])
+    }
+
+    static func transferRequest(handle: UInt32, format: UInt16, size: UInt32, name: String) -> [UInt8] {
+        var body = ByteBuffer()
+        body.write(handle)            // 0x08
+        body.write(format)            // 0x0C
+        body.write(UInt16(0)); body.write(UInt32(0)) // pad to 0x14
+        body.write(size)              // 0x14
+        body.write(UInt32(0)) // 0x18 pad
+        body.write(Array(name.utf8) + [0])
+        return record(type: CanonCodes.Event.requestObjectTransfer, body: body.bytes)
+    }
+
+    func testTransferRequestBecomesSDRAMObjectWithSizeAndName() {
+        let t = ScriptedTransport(deviceInfo: VendorFixtures.canon)
+        let h = CanonHandler(engine: PTPEngine(transport: t), info: VendorFixtures.canon)
+        let events = h.ingest(Data(Self.transferRequest(handle: 0x9000_0001, format: 0x3801, size: 8_765_432, name: "IMG_0100.JPG") + Self.terminator))
+        XCTAssertEqual(events.count, 1)
+        guard case .objectAdded(let obj) = events[0] else { return XCTFail("expected objectAdded, got \(events)") }
+        XCTAssertEqual(obj.handle, 0x9000_0001)
+        XCTAssertTrue(obj.inSDRAM)
+        XCTAssertEqual(obj.info?.objectCompressedSize, 8_765_432)
+        XCTAssertEqual(obj.info?.filename, "IMG_0100.JPG")
+        XCTAssertEqual(obj.info?.objectFormat, .exifJPEG)
+    }
+
+    func testNamelessTransferRequestGetsANameFromItsFormat() {
+        let t = ScriptedTransport(deviceInfo: VendorFixtures.canon)
+        let h = CanonHandler(engine: PTPEngine(transport: t), info: VendorFixtures.canon)
+        var body = ByteBuffer()
+        body.write(UInt32(0x0040_0012)); body.write(UInt16(0xB108)); body.write(UInt16(0)); body.write(UInt32(0))
+        body.write(UInt32(45_000_000)); body.write(UInt32(0)); body.write(UInt8(0))
+        let events = h.ingest(Data(Self.record(type: CanonCodes.Event.requestObjectTransfer64LFN, body: body.bytes) + Self.terminator))
+        guard case .objectAdded(let obj)? = events.first else { return XCTFail("expected objectAdded, got \(events)") }
+        XCTAssertTrue(obj.inSDRAM)
+        XCTAssertEqual(obj.info?.objectCompressedSize, 45_000_000)
+        XCTAssertEqual(obj.info?.filename, "IMG_0012.CR3")
     }
 
     func testSDRAMObjectIsFlaggedWhenStorageIsHost() {
@@ -171,23 +234,153 @@ final class CanonVendorTests: XCTestCase {
         }
     }
 
-    func testSDRAMFetchUsesPartialObjectExThenTransferComplete() async throws {
+    func testSDRAMFetchUsesStandardPartialObjectThenTransferComplete() async throws {
         let rig = try await VendorRig(VendorFixtures.canon)
         let payload = Data((0 ..< 3000).map { UInt8($0 & 0xFF) })
-        rig.transport.on(CanonCodes.Op.getPartialObjectEx) { req in
+        rig.transport.on(.getPartialObject) { req in
             let off = Int(req.parameters[1]), want = Int(req.parameters[2])
             return .ok(payload[off ..< min(payload.count, off + want)])
         }
         rig.transport.on(CanonCodes.Op.transferComplete) { _ in .ok() }
-        await rig.engine.setChunk(1024)
         let h = CanonHandler(engine: rig.engine, info: rig.info)
         let info = PTPObjectInfo(storageID: 0, objectFormat: .exifJPEG, objectCompressedSize: UInt32(payload.count), filename: "IMG_0001.JPG")
         let (oi, data) = try await h.fetchObject(NewObject(handle: 0x42, storageID: 0, info: info, inSDRAM: true), progress: nil)
         XCTAssertEqual(data, payload)
         XCTAssertEqual(oi.filename, "IMG_0001.JPG")
-        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.getPartialObjectEx).count, 3)
+        XCTAssertEqual(rig.transport.requests(for: .getPartialObject).first?.parameters, [0x42, 0, 3000])
+        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.getPartialObjectEx).count, 0)
         XCTAssertEqual(rig.codes.last, CanonCodes.Op.transferComplete)
         XCTAssertEqual(rig.requests.last?.parameters, [0x42])
+    }
+
+    func testFailedSDRAMFetchStillReleasesTheCamera() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.on(.getPartialObject) { _ in .ok(Data()) }
+        rig.transport.on(CanonCodes.Op.transferComplete) { _ in .ok() }
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        let info = PTPObjectInfo(storageID: 0, objectFormat: .exifJPEG, objectCompressedSize: 3000, filename: "IMG_0002.JPG")
+        do {
+            _ = try await h.fetchObject(NewObject(handle: 0x43, storageID: 0, info: info, inSDRAM: true), progress: nil)
+            XCTFail("expected the empty read to fail")
+        } catch {}
+        XCTAssertEqual(rig.codes.last, CanonCodes.Op.transferComplete)
+        XCTAssertEqual(rig.requests.last?.parameters, [0x43])
+    }
+
+    static let canonTouchAF = VendorFixtures.info("Canon Inc.", "Canon EOS R5m2",
+        ops: [0x9114, 0x9115, 0x9116, 0x9110, 0x9128, 0x9129, 0x9107, 0x9117, 0x9153, 0x910F, 0x915B, 0x9154, 0x9160, 0x913D],
+        extraStandardProps: false, vendorExtension: 0x0B)
+
+    /// OLCInfoChanged for layout 0x14 (R5 Mark II) carrying focus info
+    /// `result`/`running` (libgphoto2 traces), optionally after a 0x0001 field.
+    static func olcFocus(result: UInt8, running: UInt8, withLeadingField: Bool = false) -> [UInt8] {
+        let mask: UInt16 = withLeadingField ? 0x0101 : 0x0100
+        var fields = [UInt8]()
+        if withLeadingField { fields += [0xAA, 0xBB] }                 // mask 0x0001: 2 bytes
+        fields += [0, 0, 0, 0, result, running, 0]                     // mask 0x0100: 7 bytes on 0x14
+        var body = ByteBuffer()
+        body.write(UInt32(8 + 8 + fields.count))                       // blob length = record size - 8
+        body.write(mask); body.write(UInt16(0))
+        body.write(fields)
+        return record(type: CanonCodes.Event.olcInfoChanged, body: body.bytes)
+    }
+
+    /// Box the scripted camera reads to know whether AF has been started.
+    final class AFScript: @unchecked Sendable {
+        private let lock = NSLock()
+        private var started = false
+        private var reports: [[UInt8]]
+        init(_ reports: [[UInt8]]) { self.reports = reports }
+        func start() { lock.lock(); started = true; lock.unlock() }
+        func next() -> [UInt8] {
+            lock.lock(); defer { lock.unlock() }
+            guard started, !reports.isEmpty else { return [] }
+            return reports.removeFirst()
+        }
+    }
+
+    private func touchRig(focusMode: UInt32, reports: [[UInt8]]) async throws -> (VendorRig, CanonHandler) {
+        let rig = try await VendorRig(Self.canonTouchAF)
+        rig.transport.okAll()
+        let script = AFScript(reports)
+        rig.transport.on(CanonCodes.Op.doAf) { _ in script.start(); return .ok() }
+        rig.transport.on(CanonCodes.Op.getEvent) { _ in .ok(Data(script.next() + Self.terminator)) }
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        h.ingest(Data(Self.propValueChanged(CanonCodes.Prop.olcInfoVersion, 0x14)
+                      + Self.propValueChanged(CanonCodes.Prop.focusMode, focusMode) + Self.terminator))
+        return (rig, h)
+    }
+
+    private func focusModeWrites(_ rig: VendorRig) -> [Data?] {
+        rig.requests.filter { $0.code == CanonCodes.Op.setDevicePropValueEx }.map(\.dataOut)
+            .filter { $0 == CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 0)
+                   || $0 == CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 1) }
+    }
+
+    func testOLCFocusInfoParsesTheR5MarkIIStates() {
+        func state(_ bytes: [UInt8]) -> CanonHandler.AFState? {
+            CanonHandler.olcFocusState(CanonEventRecord.parse(Data(bytes + Self.terminator))[0], version: 0x14)
+        }
+        XCTAssertEqual(state(Self.olcFocus(result: 0, running: 1)), .running)
+        XCTAssertEqual(state(Self.olcFocus(result: 1, running: 1)), .focused)
+        XCTAssertEqual(state(Self.olcFocus(result: 2, running: 1)), .failed)
+        XCTAssertEqual(state(Self.olcFocus(result: 0, running: 0)), .idle)
+        XCTAssertEqual(state(Self.olcFocus(result: 1, running: 1, withLeadingField: true)), .focused, "earlier fields shift the offset")
+        XCTAssertNil(CanonHandler.olcFocusState(CanonEventRecord.parse(Data(Self.olcFocus(result: 1, running: 1) + Self.terminator))[0], version: 0))
+    }
+
+    func testTapStopsOnTheCamerasOwnLockReport() async throws {
+        // R8 / R5 Mark II success: 00-01 → 01-01 → 00-00, the last two in one dump.
+        let (rig, h) = try await touchRig(focusMode: CanonCodes.focusModeOneShot,
+                                          reports: [Self.olcFocus(result: 0, running: 1),
+                                                    Self.olcFocus(result: 1, running: 1) + Self.olcFocus(result: 0, running: 0)])
+        let started = Date()
+        let result = try await h.focus(atNormalizedX: 0.5, y: 0.5)
+        XCTAssertEqual(result, .focused)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "returns on the report, not a timer")
+        XCTAssertFalse(rig.codes.contains(CanonCodes.Op.afCancel))
+        XCTAssertTrue(focusModeWrites(rig).isEmpty)
+    }
+
+    func testFailedAFIsReported() async throws {
+        // R5 Mark II failure trace: 00-01, 02-01, 02-00, 00-00.
+        let (_, h) = try await touchRig(focusMode: CanonCodes.focusModeOneShot,
+                                        reports: [Self.olcFocus(result: 0, running: 1), Self.olcFocus(result: 2, running: 1),
+                                                  Self.olcFocus(result: 2, running: 0), Self.olcFocus(result: 0, running: 0)])
+        let result = try await h.focus(atNormalizedX: 0.2, y: 0.8)
+        XCTAssertEqual(result, .failed)
+    }
+
+    func testServoTapLocksInOneShotThenRestoresServoRightAway() async throws {
+        let (rig, h) = try await touchRig(focusMode: CanonCodes.focusModeServo,
+                                          reports: [Self.olcFocus(result: 0, running: 1), Self.olcFocus(result: 1, running: 1)])
+        let result = try await h.focus(atNormalizedX: 0.5, y: 0.5)
+        XCTAssertEqual(result, .focused)
+        XCTAssertEqual(focusModeWrites(rig), [CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 0),
+                                              CanonHandler.setPropertyPayload(CanonCodes.Prop.focusMode, 1)])
+        let oneShot = rig.codes.firstIndex(of: CanonCodes.Op.setDevicePropValueEx)!
+        let restore = rig.codes.lastIndex(of: CanonCodes.Op.setDevicePropValueEx)!
+        XCTAssertLessThan(oneShot, rig.codes.firstIndex(of: CanonCodes.Op.doAf)!)
+        XCTAssertGreaterThan(restore, rig.codes.firstIndex(of: CanonCodes.Op.doAf)!)
+        XCTAssertFalse(rig.codes.contains(CanonCodes.Op.afCancel), "One Shot stops itself")
+    }
+
+    func testHoldTracksInTheUsersModeUntilReleased() async throws {
+        let (rig, h) = try await touchRig(focusMode: CanonCodes.focusModeServo, reports: [])
+        try await h.startTrackingFocus(atNormalizedX: 0.4, y: 0.4)
+        XCTAssertTrue(rig.codes.contains(CanonCodes.Op.doAf))
+        XCTAssertFalse(rig.codes.contains(CanonCodes.Op.afCancel))
+        XCTAssertTrue(focusModeWrites(rig).isEmpty, "tracking keeps Servo")
+        await h.stopTrackingFocus()
+        XCTAssertEqual(rig.codes.last, CanonCodes.Op.afCancel)
+    }
+
+    func testPrepareTurnsOnOLCEvents() async throws {
+        let rig = try await VendorRig(Self.canonTouchAF)
+        rig.transport.okAll()
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        try await h.prepare()
+        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.setRequestOLCInfoGroup).first?.parameters, [0x1FFF])
     }
 
     func testLiveViewSetsEvfAndExtractsJPEGRecord() async throws {

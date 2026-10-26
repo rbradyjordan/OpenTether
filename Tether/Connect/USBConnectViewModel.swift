@@ -7,6 +7,9 @@ final class USBConnectViewModel {
     private(set) var devices: [USBCameraCandidate] = []
     private(set) var authorization = USBAuthorizationState()
     private(set) var browserError: String?
+    /// Diagnostic line under the camera list, refreshed every second.
+    private(set) var statusLine = ""
+    private var statusTask: Task<Void, Never>?
     var progress: ConnectProgress?
     var isConnecting = false
 
@@ -17,7 +20,15 @@ final class USBConnectViewModel {
 
     func start() {
         guard task == nil else { return }
+        authorization = browser.currentAuthorization()   // what iOS already has, no prompt
         browser.start()
+        statusTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                statusLine = browser.statusLine
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         let stream = browser.events
         task = Task { [weak self] in
             for await event in stream {
@@ -34,11 +45,16 @@ final class USBConnectViewModel {
     func stop() {
         task?.cancel()
         task = nil
+        statusTask?.cancel()
+        statusTask = nil
         // The browser keeps running while a session is live (reconnect needs it).
     }
 
     func requestAuthorizations() {
-        Task { authorization = await browser.requestAuthorizations() }
+        Task {
+            authorization = await browser.requestAuthorizations()
+            if authorization.canSendPTP { browser.start() }   // begin seeing cameras now
+        }
     }
 
     func connect(_ candidate: USBCameraCandidate, shoot: ShootSession, app: AppModel) {

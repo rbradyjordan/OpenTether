@@ -1,9 +1,7 @@
 import Foundation
 import Security
-import TetherCore
 
-/// Generic-password Keychain item per key. Used for the cloud device token
-/// (`TokenStoring`) and for FTP destination passwords.
+/// Generic-password Keychain item per key: FTP destination passwords.
 final class KeychainStore: @unchecked Sendable {
     let service: String
     init(service: String = "com.bradyjordan.tether") { self.service = service }
@@ -35,15 +33,4 @@ final class KeychainStore: @unchecked Sendable {
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         _ = SecItemAdd(add as CFDictionary, nil)
     }
-}
-
-final class KeychainTokenStore: TokenStoring, @unchecked Sendable {
-    private let keychain: KeychainStore
-    private let key: String
-    init(keychain: KeychainStore = KeychainStore(), key: String = "cloud.deviceToken") {
-        self.keychain = keychain
-        self.key = key
-    }
-    func token() -> String? { keychain.read(key) }
-    func setToken(_ token: String?) { keychain.write(key, token) }
 }

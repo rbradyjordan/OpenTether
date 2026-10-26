@@ -56,20 +56,29 @@ struct ConnectHubView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: TetherSpace.m) {
+                ScreenIntro(text: "Pick how your camera talks to the phone. USB-C is the fastest and most reliable.")
                 if let interrupted = app.interrupted.first {
                     ResumeBanner(session: interrupted)
                 }
                 cardStack
-                recentCameras
+                recentCameras.staggeredAppear(3)
                 NavigationLink(value: AppRoute.brandGuides) {
-                    ActionCard(title: "Camera setup guides", subtitle: "Which menu to flip for Canon, Nikon, Sony, Fujifilm, Ricoh and more.",
-                               systemImage: "book")
+                    ActionCard(title: "Camera setup guides", subtitle: "The menu to change on Canon, Nikon, Sony, Fujifilm and more.",
+                               systemImage: "book.pages")
                 }
+                .staggeredAppear(4)
+                Button { Task { await DemoSession.start(app) } } label: {
+                    ActionCard(title: "No camera? Try a demo session",
+                               subtitle: "Sample frames arrive as if you were shooting, so you can rate, apply looks and export.",
+                               systemImage: "play.rectangle")
+                }
+                .staggeredAppear(5)
+                .accessibilityHint("Starts a session with sample photos, no camera needed")
             }
             .padding(TetherSpace.l)
         }
         .buttonStyle(.plain)
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .navigationTitle("Connect")
         .navigationDestination(for: AppRoute.self) { route in ConnectRouteView(route: route) }
         .toolbar {
@@ -93,17 +102,22 @@ struct ConnectHubView: View {
             NavigationLink(value: AppRoute.usb) {
                 ActionCard(title: "USB-C", subtitle: "Plug the camera straight into the phone.",
                            systemImage: "cable.connector",
-                           badge: hub.usbDeviceVisible ? "Recommended · most stable" : nil,
+                           badge: hub.usbDeviceVisible ? "Camera found" : nil,
                            isLive: hub.usbDeviceVisible)
             }
+            .staggeredAppear(0)
             NavigationLink(value: AppRoute.wifi) {
-                ActionCard(title: "Wi-Fi", subtitle: "Join the camera's network in Settings, then pick it from the list.",
-                           systemImage: "wifi", isLive: hub.wifiCameraVisible)
+                ActionCard(title: "Wi-Fi", subtitle: "Join the camera's network, then pick it here.",
+                           systemImage: "wifi", badge: hub.wifiCameraVisible ? "Camera found" : nil,
+                           isLive: hub.wifiCameraVisible)
             }
+            .staggeredAppear(1)
             NavigationLink(value: AppRoute.ftpReceiver) {
-                ActionCard(title: "FTP", subtitle: "Turn the phone into an FTP server the camera sends files to.",
-                           systemImage: "arrow.down.doc", isLive: hub.ftpClientConnected)
+                ActionCard(title: "FTP", subtitle: "The camera sends each photo to the phone as you shoot.",
+                           systemImage: "arrow.down.doc", badge: hub.ftpClientConnected ? "Receiving" : nil,
+                           isLive: hub.ftpClientConnected)
             }
+            .staggeredAppear(2)
         }
     }
 
@@ -141,7 +155,6 @@ struct ConnectRouteView: View {
         case .brandGuide(let vendor): BrandGuideDetailView(vendor: vendor)
         case .diagnostics(let wired): DiagnosticsView(wired: wired)
         case .sessionDetail(let id): SessionDetailView(sessionID: id)
-        case .credits: CreditsView()
         case .ftpDestinations: FTPDestinationsView()
         case .exportProgress(let sessionID): ExportProgressView(sessionID: sessionID)
         case .ptpLog: DiagnosticsLogView()
@@ -149,6 +162,7 @@ struct ConnectRouteView: View {
         case .privacy: PrivacyView()
         case .about: AboutView()
         case .metadata: MetadataSettingsView()
+        case .folderDestinations: FolderDestinationsView()
         }
     }
 }
@@ -159,26 +173,33 @@ struct ResumeBanner: View {
     var session: ShootSession
 
     var body: some View {
-        HStack(spacing: TetherSpace.m) {
-            Image(systemName: "arrow.counterclockwise.circle.fill")
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(TetherColor.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Resume \(session.name)?").font(TetherFont.headline).foregroundStyle(TetherColor.ink0).lineLimit(1)
-                Text("\(session.captureCount) frames · \(session.transport?.displayName ?? "no camera")")
-                    .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
+        VStack(alignment: .leading, spacing: TetherSpace.m) {
+            HStack(alignment: .top, spacing: TetherSpace.m) {
+                IconTile(systemImage: "arrow.counterclockwise", active: true, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pick up where you left off").tetherCaption().foregroundStyle(TetherColor.accent)
+                    Text(session.name).font(TetherFont.headline).foregroundStyle(TetherColor.ink0).lineLimit(2)
+                    Text("\(session.captureCount) frames · \(session.transport?.displayName ?? "no camera")")
+                        .font(TetherFont.hud).foregroundStyle(TetherColor.ink1)
+                }
+                Spacer(minLength: TetherSpace.xs)
+                Button { app.dismissInterrupted(session) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(TetherColor.ink1)
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                        .frame(width: TetherHit.min, height: TetherHit.min)
+                }
+                .buttonStyle(PressScaleStyle())
+                .accessibilityLabel("End \(session.name) without resuming")
             }
-            Spacer(minLength: TetherSpace.xs)
-            Button("Resume") { app.resume(session) }
-                .buttonStyle(.borderedProminent).tint(TetherColor.accent).controlSize(.regular)
-            Button { app.dismissInterrupted(session) } label: {
-                Image(systemName: "xmark").frame(width: TetherHit.min - 8, height: TetherHit.min - 8)
+            Button { app.resume(session) } label: {
+                Label("Resume session", systemImage: "play.fill").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered).tint(TetherColor.ink1)
-            .accessibilityLabel("End \(session.name) without resuming")
+            .buttonStyle(.tetherPrimary)
         }
         .padding(TetherSpace.l)
-        .background(TetherColor.accentSoft, in: RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous).strokeBorder(TetherColor.accent.opacity(0.35), lineWidth: 0.5))
+        .tetherGlassCard(tint: TetherColor.accent.opacity(0.18))
     }
 }

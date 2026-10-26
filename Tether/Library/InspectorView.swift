@@ -34,7 +34,7 @@ struct InspectorView: View {
                 EmptyState(systemImage: "photo", title: "Nothing selected", message: "Tap a photo to inspect it.")
             }
         }
-        .background(TetherColor.surface1)
+        .tetherScreen()
         .task(id: "\(item?.id ?? "")|\(item?.rating ?? 0)|\(item?.flag.rawValue ?? "")") { refresh() }
     }
 
@@ -101,7 +101,7 @@ struct InspectorView: View {
             model.focusedID = item.id
             model.scrollToCaptureID = item.id
         } label: { Label("Reveal in session", systemImage: "rectangle.stack.badge.person.crop") }
-            .buttonStyle(.bordered)
+            .buttonStyle(.tetherSecondary)
             .frame(minHeight: TetherHit.min)
     }
 

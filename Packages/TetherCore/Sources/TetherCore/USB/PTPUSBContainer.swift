@@ -82,12 +82,16 @@ public struct USBAuthorizationState: Equatable, Sendable {
         self.contents = contents
     }
 
+    /// Refused before: only Settings can change it now.
+    public var isDenied: Bool { control == .denied || contents == .denied }
+
     public var canSendPTP: Bool { (control == .granted || control == .notRequired) && (contents == .granted || contents == .notRequired) }
     public var summary: String {
         if canSendPTP { return "Camera control and contents access granted" }
         var missing = [String]()
         if control == .denied || control == .notDetermined { missing.append("camera control") }
-        if contents == .denied || contents == .notDetermined { missing.append("photo access") }
+        if contents == .denied || contents == .notDetermined { missing.append("camera access") }
+        if isDenied { return "Turned off: allow \(missing.joined(separator: " and ")) in Settings" }
         return "Needs \(missing.joined(separator: " and "))"
     }
 }

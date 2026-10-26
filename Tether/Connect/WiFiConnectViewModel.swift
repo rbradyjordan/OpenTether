@@ -86,8 +86,9 @@ final class WiFiConnectViewModel {
             defer { isConnecting = false; connectingID = nil }
             do {
                 let connection: LiveConnection
-                if camera.transport == .ricohHTTP || camera.vendor == .ricoh {
-                    connection = try await ConnectionBuilder.connectRicoh(host: camera.host, shoot: shoot, services: app.services, progress: report)
+                if let vendor = camera.vendor, vendor.usesHTTPControl {
+                    let host = camera.port == 80 || camera.host.contains(":") ? camera.host : "\(camera.host):\(camera.port)"
+                    connection = try await ConnectionBuilder.connectHTTP(vendor: vendor, host: host, shoot: shoot, services: app.services, progress: report)
                 } else {
                     connection = try await ConnectionBuilder.connectPTPIP(host: camera.host, port: camera.port, vendorHint: camera.vendor,
                                                                           shoot: shoot, services: app.services, progress: report)
