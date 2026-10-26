@@ -1,0 +1,95 @@
+/* Design tokens, ported from Tether/Components/Theme.swift.
+   Always dark: graphite, brushed steel, one lens-blue accent. Flat: no
+   gradients, no drop shadows; depth comes from glass (translucent fill +
+   backdrop blur + a 0.5 px hairline). */
+
+:root {
+  color-scheme: dark;
+
+  /* Colour */
+  --ink-0: #f2f4f7;
+  --ink-1: #a9b0bb;
+  --ink-2: #6b7380;
+  --surface-0: #000000;
+  --surface-1: #0a0b0e;
+  --surface-2: #14161b;
+  --surface-3: #1e2128;
+  --hairline: rgba(255, 255, 255, 0.09);
+  --accent: #4a9dff;
+  --accent-soft: rgba(74, 157, 255, 0.16);
+  --accent-deep: #2f6ff0;
+  --steel: #8c939e;
+  --ok: #3dd68c;
+  --warn: #f2b63d;
+  --danger: #ff5c5c;
+  --pick: #ffd166;
+
+  --label-red: #ff5c5c;
+  --label-yellow: #ffd166;
+  --label-green: #3dd68c;
+  --label-blue: #4c8dff;
+  --label-purple: #b07cff;
+
+  /* Glass */
+  --glass-fill: rgba(255, 255, 255, 0.055);
+  --glass-fill-hover: rgba(255, 255, 255, 0.09);
+  --glass-stroke: rgba(255, 255, 255, 0.1);
+  --glass-blur: saturate(160%) blur(22px);
+  --chip-fill: rgba(255, 255, 255, 0.07);
+  --field-fill: rgba(255, 255, 255, 0.06);
+  --field-fill-focus: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(0, 0, 0, 0.55);
+
+  /* Type */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro", system-ui, "Helvetica Neue", sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fs-display: 30px;
+  --fs-title: 20px;
+  --fs-headline: 15px;
+  --fs-body: 14px;
+  --fs-callout: 13px;
+  --fs-caption: 11px;
+  --fs-exposure: 18px;
+  --fs-hud: 12px;
+
+  /* Spacing */
+  --sp-xs: 4px;
+  --sp-s: 8px;
+  --sp-m: 12px;
+  --sp-l: 16px;
+  --sp-xl: 24px;
+  --sp-xxl: 32px;
+
+  /* Shape */
+  --r-card: 18px;
+  --r-control: 12px;
+  --r-chip: 9px;
+  --r-pill: 999px;
+
+  /* Hit target (Mac: pointer, so smaller than iOS's 44) */
+  --hit: 32px;
+
+  /* Motion */
+  --ease-snap: cubic-bezier(0.3, 1.3, 0.5, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-snap: 180ms;
+  --t-arrive: 300ms;
+  --t-settle: 420ms;
+
+  /* Layout */
+  --sidebar-width: 248px;
+  --inspector-width: 340px;
+  --shoot-panel-width: 380px;
+  --toolbar-height: 48px;
+  --readable-width: 640px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-snap: 1ms;
+    --t-arrive: 1ms;
+    --t-settle: 1ms;
+  }
+}

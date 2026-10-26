@@ -33,6 +33,13 @@ tether/
 └── backend/                 Legacy cloud service, no longer used by the app
 ```
 
+## Mac
+
+`macos/` is a separate, direct-download Mac app (Rust engine ported from
+`Packages/TetherCore`, Tauri 2 front end), distributed outside the App Store.
+The iOS target also builds for the Mac as a Mac Catalyst app. See
+`macos/README.md`.
+
 ## Cameras
 
 | Brand | USB-C | Wi-Fi |

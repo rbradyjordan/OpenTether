@@ -1,0 +1,32 @@
+[package]
+name = "tether-session"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The live tether session (capture pipeline, reconnect), diagnostics, and the AppCore facade the Tauri shell calls."
+
+[dependencies]
+tether-types.workspace = true
+tether-ptp.workspace = true
+tether-net.workspace = true
+tether-library.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+image.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework.workspace = true
+objc2.workspace = true
+block2.workspace = true
+dispatch2.workspace = true
+objc2-foundation = { workspace = true, features = ["std", "NSString", "NSURL", "NSError"] }
+objc2-photos = { workspace = true, features = ["std", "block2", "dispatch2", "PHPhotoLibrary", "PHChangeRequest", "PHAssetChangeRequest", "PHObject"] }
+
+[dev-dependencies]
+tempfile.workspace = true
