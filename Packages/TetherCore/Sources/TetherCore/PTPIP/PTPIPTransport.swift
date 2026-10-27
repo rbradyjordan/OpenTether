@@ -27,7 +27,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         /// Handshake progress for the connecting screen.
         public var onProgress: (@Sendable (HandshakeStage) -> Void)?
 
-        public init(host: String, port: UInt16 = PTPIPPacket.standardPort, clientName: String = "Tether",
+        public init(host: String, port: UInt16 = PTPIPPacket.standardPort, clientName: String = PTPIPIdentity.clientName,
                     guid: [UInt8], connectTimeout: TimeInterval = 8, handshakeTimeout: TimeInterval = 15,
                     requireEventChannel: Bool = true, vendorHint: CameraVendor? = nil) {
             self.host = host
@@ -51,8 +51,12 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
 
     private var command: PTPIPChannel?
     private var event: PTPIPChannel?
-    private var commandFramer = PTPIPFramer()
-    private var queuedCommandPackets: [PTPIPPacket] = []
+    /// The command connection is read by one long-lived task into this
+    /// stream, so a transaction that gives up waiting (timeout) leaves the
+    /// read in place for the next one instead of a socket read nothing can
+    /// cancel.
+    private var commandPackets: PacketMailbox?
+    private var commandReader: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
     private var transactionID: UInt32 = 0
     private let serial = AsyncSerialQueue()
@@ -85,6 +89,7 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         if isOpen { return }
         let cmd = try await connector.connect(host: configuration.host, port: configuration.port, timeout: configuration.connectTimeout)
         command = cmd
+        startCommandReader(cmd)
         configuration.onProgress?(.tcpConnected)
         do {
             try await cmd.send(PTPIPPacket.initCommandRequest(guid: configuration.guid, name: configuration.clientName,
@@ -133,9 +138,9 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
 
     private static func describeInitFail(_ reason: UInt32) -> String {
         switch reason {
-        case 1: return "The camera rejected the connection (fail reason 1). Check it is in remote/tether mode."
-        case 2: return "The camera is busy with another connection. Only one client can control it at a time."
-        case 3: return "The camera refused this device. Accept the pairing on the camera and try again."
+        case 1: return "The camera rejected the connection. Put it in its remote-control Wi-Fi mode (Canon: Wi-Fi function → Remote control (EOS Utility)) and try again."
+        case 2: return "The camera is busy with another connection (EOS Utility, Camera Connect or another phone). Close that, then try again."
+        case 3: return "The camera doesn't know this phone yet. Start pairing on the camera (Canon: Remote control (EOS Utility) → add a device), connect again here, and press OK on the camera."
         default: return "The camera refused the connection (reason \(reason))."
         }
     }
@@ -144,12 +149,13 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         stateLock.lock(); _isOpen = false; stateLock.unlock()
         eventTask?.cancel()
         eventTask = nil
+        commandReader?.cancel()
+        commandReader = nil
+        commandPackets = nil
         command?.close()
         event?.close()
         command = nil
         event = nil
-        queuedCommandPackets.removeAll()
-        commandFramer = PTPIPFramer()
     }
 
     // MARK: Transactions
@@ -160,9 +166,10 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
 
     private func executeLocked(_ request: PTPRequest) async throws -> PTPResponse {
         guard isOpen, let cmd = command else { throw PTPError.notConnected }
-        transactionID &+= 1
-        if transactionID == 0 { transactionID = 1 }
+        // First transaction is 0, as EOS Utility and libgphoto2 send it; Canon
+        // bodies check the sequence.
         let tid = transactionID
+        transactionID &+= 1
         let started = Date()
 
         let phase = request.dataOut == nil ? PTPIPPacket.DataPhase.noDataOrDataIn : PTPIPPacket.DataPhase.dataOut
@@ -212,22 +219,47 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
                 }
             }
         } catch let e as PTPError {
-            if case .timeout = e {
+            switch e {
+            case .timeout:
+                // Over Wi-Fi a slow answer is not a dead link: cancel this
+                // transaction and keep the session. Anything the camera still
+                // sends for it is dropped by transaction ID above.
+                health.lastError = "\(e)"
+                try? await cmd.send(PTPIPPacket.cancelTransaction(transactionID: tid).encode())
+            case .transportClosed:
                 health.lastError = "\(e)"
                 await close()
+            default: break
             }
             throw e
         }
     }
 
-    private func nextCommandPacket() async throws -> PTPIPPacket {
-        guard let cmd = command else { throw PTPError.notConnected }
-        while true {
-            if !queuedCommandPackets.isEmpty { return queuedCommandPackets.removeFirst() }
-            let chunk = try await cmd.receive()
-            commandFramer.append(chunk)
-            queuedCommandPackets.append(contentsOf: try commandFramer.drain())
+    private func startCommandReader(_ cmd: PTPIPChannel) {
+        let mailbox = PacketMailbox()
+        commandPackets = mailbox
+        commandReader = Task.detached { [weak self] in
+            var framer = PTPIPFramer()
+            defer { mailbox.finish() }
+            while !Task.isCancelled {
+                do {
+                    framer.append(try await cmd.receive())
+                    for p in try framer.drain() { mailbox.deliver(p) }
+                } catch {
+                    if let self, self.isOpen { self.health.lastError = "command channel: \(error)" }
+                    return
+                }
+            }
         }
+    }
+
+    /// Next packet from the command connection. Throws `transportClosed`
+    /// when the connection has ended, `cancelled` when the caller stopped waiting.
+    private func nextCommandPacket() async throws -> PTPIPPacket {
+        guard let mailbox = commandPackets else { throw PTPError.notConnected }
+        if let p = await mailbox.next() { return p }
+        if Task.isCancelled { throw PTPError.cancelled }
+        throw PTPError.transportClosed
     }
 
     private func startEventLoop(_ evt: PTPIPChannel, framer initial: PTPIPFramer) {
@@ -293,5 +325,73 @@ public actor AsyncSerialQueue {
         }
         tail = Task { _ = try? await task.value }
         return try await task.value
+    }
+}
+
+/// Packets from one connection, handed out one at a time. A waiter whose
+/// task is cancelled (a transaction timing out) is simply released; the
+/// packets keep flowing for the next transaction, unlike an AsyncStream,
+/// which ends for good when its consumer is cancelled.
+final class PacketMailbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var queue: [PTPIPPacket] = []
+    private var waiter: CheckedContinuation<PTPIPPacket?, Never>?
+    private var finished = false
+
+    func deliver(_ packet: PTPIPPacket) {
+        lock.lock()
+        if let w = waiter {
+            waiter = nil
+            lock.unlock()
+            w.resume(returning: packet)
+        } else {
+            queue.append(packet)
+            lock.unlock()
+        }
+    }
+
+    func finish() {
+        lock.lock()
+        finished = true
+        let w = waiter
+        waiter = nil
+        lock.unlock()
+        w?.resume(returning: nil)
+    }
+
+    /// nil when the connection has ended or the waiting task was cancelled.
+    func next() async -> PTPIPPacket? {
+        lock.lock()
+        if !queue.isEmpty {
+            let p = queue.removeFirst()
+            lock.unlock()
+            return p
+        }
+        if finished { lock.unlock(); return nil }
+        lock.unlock()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<PTPIPPacket?, Never>) in
+                lock.lock()
+                if !queue.isEmpty {
+                    let p = queue.removeFirst()
+                    lock.unlock()
+                    cont.resume(returning: p)
+                } else if finished || Task.isCancelled {
+                    lock.unlock()
+                    cont.resume(returning: nil)
+                } else {
+                    // One transaction at a time: a second waiter would be a bug.
+                    waiter?.resume(returning: nil)
+                    waiter = cont
+                    lock.unlock()
+                }
+            }
+        } onCancel: {
+            lock.lock()
+            let w = waiter
+            waiter = nil
+            lock.unlock()
+            w?.resume(returning: nil)
+        }
     }
 }

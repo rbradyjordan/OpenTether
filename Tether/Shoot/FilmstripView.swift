@@ -46,7 +46,8 @@ struct FilmstripView: View {
     @ViewBuilder private var cells: some View {
         ForEach(model.items) { item in
             FilmstripCell(item: item, selected: item.id == model.displayedItem?.id,
-                          pairCount: model.pairCount(for: item), cache: model.renderCache.proxyCache)
+                          pairCount: model.pairCount(for: item), cache: model.renderCache.proxyCache,
+                          bracketSize: model.bracketSizes[item.id])
                 .id(item.id)
                 .onTapGesture { model.select(item.id) }
                 .contextMenu {
@@ -97,6 +98,8 @@ struct FilmstripCell: View {
     var selected: Bool
     var pairCount: Int
     var cache: CaptureCacheProxy
+    /// Frames in this capture's exposure bracket (3, 5, 7…), when it is in one.
+    var bracketSize: Int? = nil
 
     /// Set when the cell first appears before the file has landed, so the
     /// ring is kept around long enough to flash `ok` on completion.
@@ -146,7 +149,12 @@ struct FilmstripCell: View {
                 if item.flag == .reject { Image(systemName: "xmark.circle.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(TetherColor.danger) }
                 if item.colorLabel != .none { Circle().fill(ColorLabelStyle.color(for: item.colorLabel)).frame(width: 8, height: 8) }
                 Spacer()
-                if pairCount > 1 || item.isRAW {
+                if let bracketSize {
+                    Text("HDR \(bracketSize)")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 3).padding(.vertical, 1)
+                        .background(TetherColor.accent.opacity(0.85), in: RoundedRectangle(cornerRadius: 3))
+                } else if pairCount > 1 || item.isRAW {
                     Text(pairCount > 1 ? "R+J" : "RAW")
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .padding(.horizontal, 3).padding(.vertical, 1)
@@ -165,6 +173,7 @@ struct FilmstripCell: View {
         if item.rating > 0 { parts.append("\(item.rating) stars") }
         if item.flag != .none { parts.append(item.flag.rawValue) }
         if item.colorLabel != .none { parts.append("\(item.colorLabel.rawValue) label") }
+        if let bracketSize { parts.append("in a \(bracketSize)-frame bracket") }
         return parts.joined(separator: ", ")
     }
 }

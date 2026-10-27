@@ -41,6 +41,8 @@ public actor TetherSession {
         case liveView(LiveViewFrame)
         case warning(String)
         case selection(String?)
+        /// Tags were added to a capture (room, bracket): the full tag list.
+        case tags(captureID: String, tags: [String])
     }
 
     public struct Snapshot: Sendable {
@@ -63,6 +65,8 @@ public actor TetherSession {
     private var handler: VendorHandler?
     private var engine: PTPEngine?
     private let store: SessionStore
+    /// Real estate shot list: the room every new frame is tagged with.
+    public private(set) var currentRoom: String?
     private let cache: CaptureCacheProxy
     private let previews: PreviewGenerating
     private var items: [CaptureItem] = []
@@ -102,6 +106,7 @@ public actor TetherSession {
         items = (try? store.captures(in: session.id)) ?? []
         knownHandles = Set(items.map(\.handle))
         selectedItemID = items.last { $0.state.isReady }?.id
+        currentRoom = store.currentRoom(for: session.id)
     }
 
     public var snapshot: Snapshot {
@@ -373,6 +378,7 @@ public actor TetherSession {
             upsert(current)
             session.captureCount += 1
             persistSession()
+            annotateArrival(current)
             if session.showNewestCapture || selectedItemID == nil {
                 select(current.id)
             }
@@ -554,6 +560,57 @@ public actor TetherSession {
         if item.rating != previousRating, let handler, handler.capabilities.contains(.rating) {
             try? await handler.setRating(handle: item.handle, stars: item.rating)
         }
+    }
+
+    // MARK: Rooms and brackets
+
+    /// Tags a frame that just landed with the current room, and with its
+    /// bracket when it completes an AEB set with the frames before it.
+    private func annotateArrival(_ item: CaptureItem) {
+        var touched: Set<String> = []
+        if let room = currentRoom, !room.isEmpty {
+            try? store.addTags([RoomShotList.tagPrefix + room], to: [item.id])
+            touched.insert(item.id)
+        }
+        let recent = Array(items.filter { $0.state.isReady && $0.kind.isStill }.suffix(BracketDetector.maximumSize * 2))
+        if let group = BracketDetector.groupsCollapsingPairs(in: recent).last(where: { g in g.items.contains { $0.pairKey == item.pairKey } }) {
+            // Every member of the pair set shares the tag so RAW+JPEG twins export together.
+            let ids = items.filter { i in group.items.contains { $0.pairKey == i.pairKey } }.map(\.id)
+            try? store.addTags([group.tag], to: ids)
+            touched.formUnion(ids)
+        }
+        for id in touched {
+            broadcaster.send(.tags(captureID: id, tags: (try? store.tags(for: id)) ?? []))
+        }
+    }
+
+    public func setCurrentRoom(_ slug: String?) {
+        currentRoom = slug?.isEmpty == true ? nil : slug
+        store.setSetting("rooms.current.\(session.id)", currentRoom)
+    }
+
+    /// Move an already-shot frame to a room (or out of all rooms with nil).
+    public func setRoom(_ slug: String?, for captureID: String) {
+        let old = ((try? store.tags(for: captureID)) ?? []).filter { $0.hasPrefix(RoomShotList.tagPrefix) }
+        if !old.isEmpty { try? store.removeTags(old, from: [captureID]) }
+        if let slug, !slug.isEmpty { try? store.addTags([RoomShotList.tagPrefix + slug], to: [captureID]) }
+        broadcaster.send(.tags(captureID: captureID, tags: (try? store.tags(for: captureID)) ?? []))
+    }
+
+    public var roomList: RoomShotList? { store.roomList(for: session.id) }
+
+    public func setRoomList(_ list: RoomShotList?) {
+        store.setRoomList(list, for: session.id)
+        if list == nil { currentRoom = nil }
+    }
+
+    /// Tags of every capture in the session, for room counts and bracket badges.
+    public func tagsByCapture() -> [String: [String]] {
+        var out: [String: [String]] = [:]
+        for item in items {
+            if let t = try? store.tags(for: item.id), !t.isEmpty { out[item.id] = t }
+        }
+        return out
     }
 
     // MARK: Internals

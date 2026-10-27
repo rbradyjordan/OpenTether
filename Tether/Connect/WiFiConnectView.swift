@@ -35,13 +35,19 @@ struct WiFiConnectView: View {
     @ViewBuilder private func content(_ model: WiFiConnectViewModel) -> some View {
         SessionPickerField(selection: $session)
         ssidBanner(model)
+        if model.cameraNetworkVendor == .canon || model.cameras.contains(where: { $0.vendor == .canon }) {
+            SectionCard(title: "First time with this camera?", systemImage: "link") {
+                Text("Canon bodies pair once. On the camera, choose Connect to EOS Utility → Add a device to connect to, join its Wi-Fi, then tap Connect here. The camera shows \"Open Tether\": press OK on the camera to finish. After that it connects without asking.")
+                    .font(.footnote).foregroundStyle(Theme.textSecondary)
+            }
+        }
         if let progress = model.progress {
             ConnectingProgressView(progress: progress) { model.progress = nil }
         }
         if model.cameras.isEmpty {
             SectionCard(title: "Looking on this network", systemImage: "dot.radiowaves.left.and.right") {
-                HStack { ProgressView().controlSize(.small); Text("Listening for SSDP, Bonjour, Fujifilm and Ricoh announcements…").font(.subheadline) }
-                Text("Nothing yet? Make sure the camera is in its Wi-Fi remote / smartphone-connection mode, then use Enter IP if it still does not appear.")
+                HStack { ProgressView().controlSize(.small); Text("Scanning this network for cameras…").font(.subheadline) }
+                Text("The camera must be in its remote-control Wi-Fi mode (Canon: Connect to EOS Utility; Nikon: Connect to PC; Sony: PC Remote), and the phone must be on the camera's network. A scan takes about ten seconds. Still nothing? Use Enter IP.")
                     .font(.footnote).foregroundStyle(Theme.textSecondary)
                 if !model.discoveryErrors.isEmpty {
                     ForEach(model.discoveryErrors.keys.sorted(), id: \.self) { key in
@@ -137,6 +143,7 @@ struct MethodBadge: View {
         case .fujiUDP: return "Fuji"
         case .ricohHTTP, .httpProbe: return "HTTP"
         case .manual: return "Manual"
+        case .portScan: return "Scan"
         }
     }
 }

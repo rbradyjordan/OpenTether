@@ -50,6 +50,7 @@ final class ShootViewModel {
         self.renderCache = LookRenderCache(renderer: app.services.renderer, resolver: app.services.lookResolver, cache: app.cache)
         bind()
         offerCameraMemory()
+        loadRooms()
         if connection.needsReconnect {
             pendingReconnect = true
             status = .disconnected("Resumed after the app was closed")
@@ -160,6 +161,9 @@ final class ShootViewModel {
         case .liveView(let frame):
             let payload = frame.jpeg.jpegPayload() ?? frame.jpeg
             if let img = UIImage(data: payload) { liveViewImage = img }
+        case .tags(let id, let tags):
+            tagsByCapture[id] = tags
+            refreshRoomsAndBrackets()
         case .warning(let w):
             toast = ToastMessage(text: w, systemImage: "exclamationmark.triangle")
         case .selection(let id):
@@ -275,6 +279,79 @@ final class ShootViewModel {
         focusIndicator = indicator
         TetherHaptic.rate()
         return focusPointID
+    }
+
+    // MARK: Real estate: rooms, brackets, grid
+
+    /// The session's shot list (nil when this isn't a listing shoot).
+    private(set) var roomList: RoomShotList?
+    private(set) var currentRoom: String?
+    private(set) var roomCounts: [String: Int] = [:]
+    /// Bracket size keyed by the id of every member (RAW+JPEG twins included).
+    private(set) var bracketSizes: [String: Int] = [:]
+    /// Members of each bracket, keyed by bracket id, in capture order.
+    private(set) var brackets: [String: [String]] = [:]
+    private var tagsByCapture: [String: [String]] = [:]
+    /// Thirds grid with centre lines on live view, for straight verticals.
+    var showGrid: Bool {
+        get { app.memory.get(WorkspaceMemory.shootGrid) }
+        set { app.memory.set(WorkspaceMemory.shootGrid, newValue) }
+    }
+
+    var roomCoverage: (covered: Int, total: Int)? { roomList?.coverage(counts: roomCounts) }
+    var currentRoomName: String? { currentRoom.map(RoomShotList.displayName(fromSlug:)) }
+
+    func loadRooms() {
+        Task {
+            let list = await session.roomList
+            let room = await session.currentRoom
+            let tags = await session.tagsByCapture()
+            roomList = list
+            currentRoom = room
+            tagsByCapture = tags
+            refreshRoomsAndBrackets()
+        }
+    }
+
+    func setRoomList(_ list: RoomShotList?) {
+        roomList = list
+        if let list, let current = currentRoom, list.room(withSlug: current) == nil { selectRoom(nil) }
+        Task { await session.setRoomList(list) }
+        refreshRoomsAndBrackets()
+    }
+
+    func selectRoom(_ slug: String?) {
+        currentRoom = slug
+        TetherHaptic.rate()
+        Task { await session.setCurrentRoom(slug) }
+    }
+
+    func nextRoom() {
+        guard let list = roomList, let next = list.next(after: currentRoom) else { return }
+        selectRoom(next.slug)
+    }
+
+    /// Re-file a shot frame under a room.
+    func setRoom(_ slug: String?, for captureID: String) {
+        Task { await session.setRoom(slug, for: captureID) }
+    }
+
+    func room(of captureID: String) -> String? { tagsByCapture[captureID].flatMap(RoomShotList.roomSlug(in:)) }
+
+    private func refreshRoomsAndBrackets() {
+        roomCounts = RoomShotList.counts(from: tagsByCapture)
+        var sizes: [String: Int] = [:]
+        var groups: [String: [String]] = [:]
+        for item in items.sorted(by: { $0.sequence < $1.sequence }) {
+            guard let b = tagsByCapture[item.id].flatMap(BracketDetector.bracketID(in:)) else { continue }
+            groups[b, default: []].append(item.id)
+        }
+        for (b, ids) in groups {
+            let frames = Set(ids.compactMap { id in items.first { $0.id == id }?.pairKey }).count
+            for id in ids { sizes[id] = frames }
+        }
+        bracketSizes = sizes
+        brackets = groups
     }
 
     func select(_ id: String?) {

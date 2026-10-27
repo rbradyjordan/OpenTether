@@ -2,6 +2,8 @@ import Foundation
 
 public enum DiscoveryMethod: String, Codable, Sendable {
     case ssdp, bonjour, fujiUDP, ricohHTTP, httpProbe, manual
+    /// Found by probing PTP/IP's port on the local network (no multicast needed).
+    case portScan
 }
 
 /// A camera seen on the network but not yet connected. `id` is the dedupe

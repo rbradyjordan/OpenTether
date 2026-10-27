@@ -19,7 +19,7 @@ public final class CameraDiscoverer: CameraDiscovering, @unchecked Sendable {
     /// Default sources: SSDP (Sony), Bonjour (Canon/Nikon/…), Fuji dial-back,
     /// and probes of the fixed addresses Ricoh GR, GoPro and OSC 360° cameras use.
     public convenience init(expiry: TimeInterval = 30) {
-        self.init(sources: [SSDPDiscoverer(), BonjourDiscoverer(), FujiDiscoverer(), RicohProbe(), HTTPCameraProbe()], expiry: expiry)
+        self.init(sources: [SSDPDiscoverer(), BonjourDiscoverer(), FujiDiscoverer(), RicohProbe(), HTTPCameraProbe(), PTPIPScanner()], expiry: expiry)
     }
 
     public init(sources: [CameraDiscovering], expiry: TimeInterval = 30, sweepInterval: TimeInterval = 5) {
@@ -130,6 +130,10 @@ public final class CameraDiscoverer: CameraDiscovering, @unchecked Sendable {
     private func merged() -> [DiscoveredCamera] {
         var all = entries
         for (k, v) in manual where all[k] == nil { all[k] = v }
+        // A port-scan hit at an address another source already names is the
+        // same camera; keep the richer record.
+        let named = Set(all.values.filter { $0.method != .portScan }.map { "\($0.host):\($0.port)" })
+        all = all.filter { $0.value.method != .portScan || !named.contains("\($0.value.host):\($0.value.port)") }
         return all.values.sorted { a, b in
             if a.isControllable != b.isControllable { return a.isControllable }
             return a.id < b.id

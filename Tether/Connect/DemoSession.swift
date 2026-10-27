@@ -15,6 +15,10 @@ enum DemoSession {
     @MainActor static func start(_ app: AppModel, pace: Double = 1.6) async {
         guard app.shoot == nil else { app.showShoot(); return }
         let shoot = ShootSession(name: name, workflowTag: tag)
+        // A listing shot list, with the first frames filed under the kitchen,
+        // so the room bar and room naming can be tried without a camera.
+        app.store.setRoomList(.listing, for: shoot.id)
+        app.store.setSetting("rooms.current.\(shoot.id)", "kitchen")
         guard let connection = try? await ConnectionBuilder.startFTPSession(shoot: shoot, services: app.services) else {
             app.toast = ToastMessage(text: "Couldn't start the demo session.", systemImage: "exclamationmark.triangle")
             return

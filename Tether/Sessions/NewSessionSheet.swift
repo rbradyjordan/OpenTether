@@ -22,7 +22,7 @@ struct NewSessionSheet: View {
     @State private var workflowTag = ""
     @State private var editingTemplate: WorkspaceMemory.SessionTemplate?
 
-    private var templates: [WorkspaceMemory.SessionTemplate] { app.memory.templates() }
+    private var templates: [WorkspaceMemory.SessionTemplate] { app.memory.templatesWithBuiltIns() }
     private var index: Int { TemplateNaming.nextIndex(sessionCount: app.sessions.count) }
     private var camera: CameraIdentity? { app.shoot?.identity }
 
@@ -121,6 +121,9 @@ struct NewSessionSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         session.name = trimmed.isEmpty ? "Untitled shoot" : trimmed
         app.createSession(session)
+        if case .template(let id) = start, let rooms = templates.first(where: { $0.id == id })?.roomList {
+            app.store.setRoomList(rooms, for: session.id)
+        }
         onCreate?(session)
         dismiss()
     }

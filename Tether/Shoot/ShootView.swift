@@ -12,6 +12,7 @@ struct ShootView: View {
     @State private var showImporter = false
     @State private var renaming = false
     @State private var newName = ""
+    @State private var showRooms = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +29,7 @@ struct ShootView: View {
                                 Rectangle().fill(TetherColor.hairline).frame(width: 0.5)
                                 canvas
                             }
+                            RoomBar(model: model, showRooms: $showRooms)
                         }
                         Rectangle().fill(TetherColor.hairline).frame(width: 0.5)
                         ShootSidePanel(model: model)
@@ -39,6 +41,7 @@ struct ShootView: View {
                         if model.restoreOffer != nil { RestoreOfferBanner(model: model) }
                         canvas
                         ExposureBarView(model: model)
+                        RoomBar(model: model, showRooms: $showRooms)
                         FilmstripView(model: model)
                             .frame(height: 88)
                         ShootBottomBar(model: model)
@@ -56,6 +59,7 @@ struct ShootView: View {
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.image, .rawImage, .movie, .folder, .data], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { model.importFiles(urls) }
             }
+            .sheet(isPresented: $showRooms) { RoomsSheet(model: model) }
             .alert("Rename session", isPresented: $renaming) {
                 TextField("Name", text: $newName)
                 Button("Save") { app.renameSession(model.shootSession, to: newName) }
@@ -72,7 +76,8 @@ struct ShootView: View {
     }
 
     private var header: some View {
-        ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter, onMinimize: onMinimize) {
+        ShootHeader(model: model, showEndConfirm: $showEndConfirm, showImporter: $showImporter, onMinimize: onMinimize,
+                    onShotList: { showRooms = true }) {
             newName = model.shootSession.name; renaming = true
         }
     }
@@ -82,7 +87,7 @@ struct ShootView: View {
         ZStack(alignment: .bottom) {
             if (model.liveViewActive || model.liveViewStarting), model.canLiveView {
                 LiveViewView(image: model.liveViewImage, focusPoint: model.focusPoint, focusPointID: model.focusPointID,
-                             focusIndicator: model.focusIndicator, isStarting: model.liveViewStarting,
+                             focusIndicator: model.focusIndicator, isStarting: model.liveViewStarting, showGrid: model.showGrid,
                              onFocus: model.canTouchFocus ? { model.focus(at: $0) } : nil,
                              onHoldStart: model.canTouchFocus ? { model.startTrackingFocus(at: $0) } : nil,
                              onHoldEnd: { model.stopTrackingFocus() })
@@ -125,6 +130,7 @@ private struct ShootHeader: View {
     @Binding var showEndConfirm: Bool
     @Binding var showImporter: Bool
     var onMinimize: (() -> Void)?
+    var onShotList: () -> Void
     var onRename: () -> Void
 
     var body: some View {
@@ -156,6 +162,7 @@ private struct ShootHeader: View {
             Menu {
                 Button { model.sheet = .exportProgress } label: { Label("Export progress", systemImage: "arrow.up.doc") }
                 Button(action: onRename) { Label("Rename session…", systemImage: "pencil") }
+                Button(action: onShotList) { Label(model.roomList == nil ? "Shot list (rooms)…" : "Edit shot list…", systemImage: "list.bullet.rectangle") }
                 Button { showImporter = true } label: { Label("Import files…", systemImage: "square.and.arrow.down") }
                 if model.isDisconnected {
                     Button { model.showReconnect() } label: { Label("Reconnect", systemImage: "arrow.clockwise") }
@@ -242,6 +249,17 @@ private struct CanvasOverlay: View {
         HStack(alignment: .bottom) {
             FollowNewestToggle(isOn: model.shootSession.showNewestCapture) { model.setShowNewestCapture($0) }
             Spacer()
+            if model.canLiveView, model.liveViewActive {
+                Button { model.showGrid.toggle() } label: {
+                    Image(systemName: model.showGrid ? "grid" : "grid.circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(model.showGrid ? TetherColor.accent : TetherColor.ink0)
+                        .frame(width: TetherHit.min, height: TetherHit.min)
+                        .tetherGlass(in: Circle(), interactive: true)
+                }
+                .padding(.trailing, TetherSpace.xs)
+                .accessibilityLabel(model.showGrid ? "Hide grid" : "Show grid")
+            }
             if model.canLiveView {
                 Button { model.toggleLiveView() } label: {
                     ZStack {

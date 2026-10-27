@@ -7,7 +7,9 @@ import Foundation
 /// `{date}` yyyy-MM-dd · `{time}` HHmmss · `{year}` `{month}` `{day}` ·
 /// `{seq}` or `{seq:4}` zero-padded sequence · `{camera}` · `{rating}` ·
 /// `{label}` · `{pick}` ("pick"/"reject"/"") · `{kind}` (jpeg/raw) ·
-/// `{tag}` first tag · `{client}` workflow tag. Unknown tokens are kept.
+/// `{tag}` first tag · `{client}` workflow tag · `{room}` the room the frame
+/// was shot in (real estate shot lists) · `{bracket}` its exposure bracket
+/// ("b0012", from the first frame's sequence). Unknown tokens are kept.
 public struct NamingTemplate: Codable, Hashable, Sendable {
     public var pattern: String
     public init(_ pattern: String) { self.pattern = pattern }
@@ -15,7 +17,9 @@ public struct NamingTemplate: Codable, Hashable, Sendable {
     public static let original = NamingTemplate("{orig}")
     public static let sessionSequence = NamingTemplate("{session}_{seq:4}")
     public static let dated = NamingTemplate("{date}_{session}_{seq:4}")
-    public static let presets: [NamingTemplate] = [.original, .sessionSequence, .dated, NamingTemplate("{client}_{date}_{seq:3}")]
+    /// Real estate delivery: `123-Main-St_Kitchen_03.jpg`.
+    public static let listing = NamingTemplate("{session}_{room}_{seq:2}")
+    public static let presets: [NamingTemplate] = [.original, .sessionSequence, .dated, NamingTemplate("{client}_{date}_{seq:3}"), .listing]
 
     public func render(capture: CaptureItem, sessionName: String?, index: Int, camera: String? = nil, tags: [String] = [],
                        client: String? = nil, now: Date? = nil) -> String {
@@ -37,7 +41,11 @@ public struct NamingTemplate: Codable, Hashable, Sendable {
             ("{camera}", Self.safe(camera ?? "")), ("{rating}", capture.rating > 0 ? "\(capture.rating)" : "0"),
             ("{label}", capture.colorLabel == .none ? "" : capture.colorLabel.rawValue),
             ("{pick}", capture.flag == .pick ? "pick" : (capture.flag == .reject ? "reject" : "")),
-            ("{kind}", capture.kind == .raw ? "raw" : "jpeg"), ("{tag}", Self.safe(tags.first ?? "")), ("{client}", Self.safe(client ?? "")),
+            ("{kind}", capture.kind == .raw ? "raw" : "jpeg"), ("{client}", Self.safe(client ?? "")),
+            ("{room}", Self.safe(RoomShotList.roomSlug(in: tags).map(RoomShotList.displayName(fromSlug:)) ?? "")),
+            ("{bracket}", BracketDetector.bracketID(in: tags).flatMap { Int($0) }.map { String(format: "b%04d", $0) } ?? ""),
+            // Plain tags only: room / bracket markers are not "the first tag".
+            ("{tag}", Self.safe(tags.first { !$0.hasPrefix(RoomShotList.tagPrefix) && !$0.hasPrefix(BracketDetector.tagPrefix) } ?? "")),
         ]
         for (k, v) in pairs { out = out.replacingOccurrences(of: k, with: v) }
         return Self.safe(out, keepSeparators: true).isEmpty ? base : Self.safe(out, keepSeparators: true)

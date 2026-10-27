@@ -10,6 +10,9 @@ struct LiveViewView: View {
     var focusIndicator: ShootViewModel.FocusIndicator = .focusing
     /// Live view was asked for and the first frame hasn't arrived yet.
     var isStarting = false
+    /// Thirds grid with centre lines: straight verticals are the first rule
+    /// of interiors, and the centre line shows a tilted camera at once.
+    var showGrid = false
     /// Set when the body supports touch AF; called with 0…1 of the frame.
     var onFocus: ((CGPoint) -> Void)? = nil
     /// Press and hold: AF tracks until the finger lifts.
@@ -29,6 +32,9 @@ struct LiveViewView: View {
                 TetherColor.surface0
                 if let image {
                     Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
+                    if showGrid {
+                        GridOverlay(frame: Self.fittedRect(image.size, in: geo.size))
+                    }
                     if let focusPoint {
                         let frame = Self.fittedRect(image.size, in: geo.size)
                         FocusBox(indicator: focusIndicator)
@@ -144,5 +150,29 @@ private struct FocusBox: View {
                 withAnimation(.easeOut(duration: 0.35)) { gone = true }
             }
             .accessibilityHidden(true)
+    }
+}
+
+/// Thirds in white, centre lines in the accent, drawn over the fitted frame.
+private struct GridOverlay: View {
+    var frame: CGRect
+
+    var body: some View {
+        Canvas { ctx, _ in
+            var thirds = Path()
+            for i in 1 ... 2 {
+                let x = frame.minX + frame.width * CGFloat(i) / 3
+                let y = frame.minY + frame.height * CGFloat(i) / 3
+                thirds.move(to: CGPoint(x: x, y: frame.minY)); thirds.addLine(to: CGPoint(x: x, y: frame.maxY))
+                thirds.move(to: CGPoint(x: frame.minX, y: y)); thirds.addLine(to: CGPoint(x: frame.maxX, y: y))
+            }
+            ctx.stroke(thirds, with: .color(.white.opacity(0.35)), lineWidth: 1)
+            var centre = Path()
+            centre.move(to: CGPoint(x: frame.midX, y: frame.minY)); centre.addLine(to: CGPoint(x: frame.midX, y: frame.maxY))
+            centre.move(to: CGPoint(x: frame.minX, y: frame.midY)); centre.addLine(to: CGPoint(x: frame.maxX, y: frame.midY))
+            ctx.stroke(centre, with: .color(TetherColor.accent.opacity(0.8)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

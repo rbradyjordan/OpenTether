@@ -26,9 +26,10 @@ struct BrandGuide: Identifiable {
                        Step(text: "If asked, choose PC connection / EOS Utility mode on the camera.", symbol: "laptopcomputer"),
                    ],
                    wireless: [
-                       Step(text: "Menu → Wireless settings → Wi-Fi/Bluetooth connection → Connect to EOS Utility.", symbol: "antenna.radiowaves.left.and.right"),
-                       Step(text: "Pick 'Camera access point mode' and note the network name and password.", symbol: "key"),
-                       Step(text: "On the phone: Settings → Wi-Fi → join that network. Come back to Open Tether and tap the camera.", symbol: "wifi"),
+                       Step(text: "Menu → Wireless features → Wi-Fi/Bluetooth connection → Connect to EOS Utility → Add a device to connect to.", symbol: "antenna.radiowaves.left.and.right"),
+                       Step(text: "Pick 'Camera access point mode' and note the network name and password shown.", symbol: "key"),
+                       Step(text: "On the phone: Settings → Wi-Fi → join that network. Come back to Open Tether and tap the camera when it appears.", symbol: "wifi"),
+                       Step(text: "First time only: the camera shows 'Open Tether' and asks to connect. Press OK on the camera. It remembers the phone after that.", symbol: "checkmark.seal"),
                    ],
                    notes: ["Open Tether puts the body into remote-control mode and releases it when the session ends.",
                            "Captures can go to the card, the phone only, or both (Destination in the exposure bar)."]),

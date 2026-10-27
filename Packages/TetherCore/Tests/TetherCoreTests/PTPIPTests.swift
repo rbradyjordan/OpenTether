@@ -71,6 +71,13 @@ final class FakePTPIPCamera: @unchecked Sendable {
     private var eventChannel: SocketChannel?
     private(set) var connectionNumber: UInt32 = 0x1001
     var refuse = false
+    /// Like a Canon waiting for "press OK": the InitCommandAck is held this long.
+    var ackDelay: TimeInterval = 0
+    /// Operations that never get an answer (a stalled camera).
+    var stallOps: Set<PTPOperationCode> = []
+    private(set) var cancelled: [UInt32] = []
+    private(set) var clientName: String?
+    private(set) var firstTransactionID: UInt32?
     let objectPayload = Data.fakeJPEG(size: 300_000)
 
     init() throws {
@@ -123,14 +130,20 @@ final class FakePTPIPCamera: @unchecked Sendable {
                 framer.append(try await ch.receive())
                 for p in try framer.drain() {
                     switch p {
-                    case .initCommandRequest:
+                    case .initCommandRequest(_, let name, _):
+                        lock.lock(); clientName = name; lock.unlock()
                         if refuse { try await ch.send(PTPIPPacket.initFail(reason: 2).encode()); ch.close(); return }
+                        if ackDelay > 0 { try await Task.sleep(nanoseconds: UInt64(ackDelay * 1_000_000_000)) }
                         try await ch.send(PTPIPPacket.initCommandAck(connectionNumber: connectionNumber, guid: [UInt8](repeating: 9, count: 16), name: "FakeCam", protocolVersion: PTPIPPacket.protocolVersion).encode())
                     case .initEventRequest(let n):
                         guard n == connectionNumber else { try await ch.send(PTPIPPacket.initFail(reason: 1).encode()); return }
                         lock.lock(); eventChannel = ch; lock.unlock()
                         try await ch.send(PTPIPPacket.initEventAck.encode())
+                    case .cancelTransaction(let tid):
+                        lock.lock(); cancelled.append(tid); lock.unlock()
                     case .cmdRequest(_, let code, let tid, let params):
+                        lock.lock(); if firstTransactionID == nil { firstTransactionID = tid }; lock.unlock()
+                        if stallOps.contains(code) { continue }
                         switch code {
                         case .getDeviceInfo:
                             try await reply(ch, tid, data: ScriptedTransport.genericInfo.encoded)
@@ -219,6 +232,59 @@ final class PTPIPTransportTests: XCTestCase {
 
         await engine.disconnect()
         XCTAssertFalse(transport.isOpen)
+    }
+
+    func testFirstTransactionIsZeroAndTheClientNameIsOpenTether() async throws {
+        let cam = try FakePTPIPCamera()
+        cam.start()
+        defer { cam.stop() }
+        let cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()))
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        let engine = PTPEngine(transport: transport)
+        _ = try await engine.connect()
+        XCTAssertEqual(cam.clientName, "Open Tether")
+        XCTAssertEqual(cam.firstTransactionID, 0, "EOS Utility and libgphoto2 start at 0; Canon checks the sequence")
+        await engine.disconnect()
+    }
+
+    func testPairingWaitOutlivesAnOrdinaryHandshake() async throws {
+        // A Canon in pairing mode holds the ack until the user presses OK.
+        let cam = try FakePTPIPCamera()
+        cam.ackDelay = 1.5
+        cam.start()
+        defer { cam.stop() }
+        let cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()),
+                                               handshakeTimeout: PTPIPIdentity.pairingTimeout)
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        let started = Date()
+        try await transport.open()
+        XCTAssertGreaterThan(Date().timeIntervalSince(started), 1.4)
+        XCTAssertTrue(transport.isOpen)
+        await transport.close()
+    }
+
+    func testTimedOutTransactionIsCancelledAndTheSessionSurvives() async throws {
+        let cam = try FakePTPIPCamera()
+        cam.stallOps = [.getThumb]
+        cam.start()
+        defer { cam.stop() }
+        let cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()))
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        let engine = PTPEngine(transport: transport)
+        _ = try await engine.connect()
+        do {
+            _ = try await engine.execute(PTPRequest(.getThumb, parameters: [0x77], timeout: 0.3))
+            XCTFail("expected a timeout")
+        } catch let e as PTPError {
+            guard case .timeout = e else { return XCTFail("\(e)") }
+        }
+        XCTAssertTrue(transport.isOpen, "a slow answer over Wi-Fi must not drop the session")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(cam.cancelled.count, 1)
+        // The next transaction still works.
+        let info = try await engine.getObjectInfo(0x77)
+        XCTAssertEqual(info.filename, "FAKE0001.JPG")
+        await engine.disconnect()
     }
 
     func testInitFailSurfacesAsGate() async throws {

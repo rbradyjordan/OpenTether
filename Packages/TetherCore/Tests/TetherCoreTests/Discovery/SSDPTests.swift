@@ -100,7 +100,7 @@ final class SSDPTests: XCTestCase {
         XCTAssertTrue(s.contains("MX: 3\r\n"))
         XCTAssertTrue(s.contains("ST: urn:schemas-sony-com:service:DigitalImaging:1\r\n"))
         XCTAssertTrue(s.hasSuffix("\r\n\r\n"))
-        XCTAssertEqual(SSDPMessage.searchTargets.count, 3)
+        XCTAssertEqual(SSDPMessage.searchTargets.count, 4)
         XCTAssertTrue(SSDPMessage.searchTargets.contains("ssdp:all"))
         // Our own M-SEARCH parses but is neither a response nor a notify.
         let parsed = SSDPMessage.parse(s)

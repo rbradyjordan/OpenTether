@@ -231,6 +231,19 @@ private struct ExportOptionsSection: View {
 
     var body: some View {
         Section("Options") {
+            Button {
+                // What listing services and agents want: sRGB JPEGs around
+                // 2048 px, no RAW, named by address and room.
+                resize = true; longEdge = 2048
+                options.jpegQuality = 0.86
+                options.includeRAW = false
+                options.naming = .listing
+                options.layout = .flat
+                options.writeSidecars = false
+                options.writeManifest = false
+            } label: {
+                Label("Set up for MLS / listing delivery", systemImage: "house")
+            }
             Toggle("Apply look", isOn: $options.applyLook).disabled(lookIsNeutral)
             Toggle("Include RAW files", isOn: $options.includeRAW)
             if options.includeRAW {
@@ -272,7 +285,7 @@ private struct ExportNamingSection: View {
             Toggle("Write manifest (JSON + CSV)", isOn: $options.writeManifest)
         } header: { Text("Files") } footer: {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Tokens: {orig} {session} {date} {seq:4} {camera} {client} {rating} {label} {pick}")
+                Text("Tokens: {orig} {session} {date} {seq:4} {camera} {client} {room} {bracket} {rating} {label} {pick}")
                 ForEach(previewPaths, id: \.self) { Text($0).font(.system(.caption, design: .monospaced)).foregroundStyle(TetherColor.ink0) }
             }
         }

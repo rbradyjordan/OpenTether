@@ -15,7 +15,10 @@ public struct SSDPMessage: Equatable, Sendable {
     public static let port: UInt16 = 1900
     public static let sonyDigitalImaging = "urn:schemas-sony-com:service:DigitalImaging:1"
     public static let sonyScalarWebAPI = "urn:schemas-sony-com:service:ScalarWebAPI:1"
-    public static let searchTargets = [sonyDigitalImaging, sonyScalarWebAPI, "ssdp:all"]
+    /// Canon EOS in "Remote control (EOS Utility)" Wi-Fi mode announces this
+    /// (NOTIFY alive) and serves its description at :49152/upnp/CameraDevDesc.xml.
+    public static let canonEOS = "urn:schemas-canon-com:service:ICPO-WFTEOSSystemService:1"
+    public static let searchTargets = [sonyDigitalImaging, sonyScalarWebAPI, canonEOS, "ssdp:all"]
 
     public var isResponse: Bool { startLine.uppercased().hasPrefix("HTTP/") && startLine.contains("200") }
     public var isNotify: Bool { startLine.uppercased().hasPrefix("NOTIFY") }
@@ -49,6 +52,11 @@ public struct SSDPMessage: Equatable, Sendable {
     public var mentionsSony: Bool {
         let hay = ((searchTarget ?? "") + " " + (usn ?? "") + " " + (server ?? "")).lowercased()
         return hay.contains("sony-com") || hay.contains("sony")
+    }
+
+    public var mentionsCanon: Bool {
+        let hay = ((searchTarget ?? "") + " " + (usn ?? "") + " " + (server ?? "")).lowercased()
+        return hay.contains("schemas-canon-com") || hay.contains("canon")
     }
 
     public static func parse(_ text: String) -> SSDPMessage? {
@@ -89,6 +97,11 @@ public struct SSDPDeviceDescription: Equatable, Sendable {
     public var udn: String
     /// Sony puts the camera's own API base URLs in `av:X_ScalarWebAPI_ServiceList`.
     public var scalarWebAPIURLs: [String]
+
+    public var isCanonEOS: Bool {
+        manufacturer.lowercased().contains("canon")
+            || serviceTypes.contains { $0.lowercased().contains("schemas-canon-com") }
+    }
 
     public var isSonyImaging: Bool {
         serviceTypes.contains { s in
@@ -153,9 +166,11 @@ public struct SSDPDeviceDescription: Equatable, Sendable {
 
 // MARK: - Discoverer
 
-/// SSDP (UPnP) discovery for Sony cameras: active M-SEARCH on the multicast
-/// group plus passive NOTIFY listening. A hit is only accepted after its
-/// device description proves a Sony imaging service.
+/// SSDP (UPnP) discovery for Sony and Canon cameras: active M-SEARCH on the
+/// multicast group plus passive NOTIFY listening. A hit is only accepted
+/// after its device description proves a Sony imaging service or a Canon.
+/// On iOS this needs the multicast entitlement; `PTPIPScanner` covers the
+/// same cameras without it.
 public final class SSDPDiscoverer: CameraDiscovering, @unchecked Sendable {
     public var searchInterval: TimeInterval = 10
     public var descriptionTimeout: TimeInterval = 3
@@ -259,7 +274,7 @@ public final class SSDPDiscoverer: CameraDiscovering, @unchecked Sendable {
         guard IPAddressFilter.isUsable(host) else { return }
         // Skip obviously non-camera UPnP noise unless asked for all.
         let st = (msg.searchTarget ?? "").lowercased()
-        if !msg.mentionsSony && !(st.isEmpty || st.contains("upnp:rootdevice") || st.contains("mediaserver") || st.contains("basic")) { return }
+        if !msg.mentionsSony && !msg.mentionsCanon && !(st.isEmpty || st.contains("upnp:rootdevice") || st.contains("mediaserver") || st.contains("basic")) { return }
 
         let dup = lock.withLock { () -> Bool in
             if pendingLocations.contains(location) { return true }
@@ -272,7 +287,8 @@ public final class SSDPDiscoverer: CameraDiscovering, @unchecked Sendable {
         do {
             let (body, status) = try await prober.get(url, timeout: descriptionTimeout)
             guard (200 ..< 300).contains(status), let desc = SSDPDeviceDescription.parse(xml: body) else { return }
-            guard desc.isSonyImaging else { return }
+            let canon = desc.isCanonEOS || msg.mentionsCanon
+            guard desc.isSonyImaging || canon else { return }
             var details: [String: String] = [
                 "location": location, "usn": usn, "model": desc.modelName, "manufacturer": desc.manufacturer,
                 "udn": desc.udn, "serviceTypes": desc.serviceTypes.joined(separator: ","),
@@ -280,8 +296,10 @@ public final class SSDPDiscoverer: CameraDiscovering, @unchecked Sendable {
             if let server = msg.server { details["server"] = server }
             if !desc.scalarWebAPIURLs.isEmpty { details["scalarWebAPI"] = desc.scalarWebAPIURLs.joined(separator: ",") }
             if sourceHost != host { details["sourceHost"] = sourceHost }
-            let name = desc.friendlyName.isEmpty ? (desc.modelName.isEmpty ? "Sony camera" : desc.modelName) : desc.friendlyName
-            state.upsert(DiscoveredCamera(id: id, name: name, vendor: .sony, host: host, port: PTPIPPacket.standardPort,
+            let fallback = canon ? "Canon camera" : "Sony camera"
+            let name = canon ? ([desc.modelName, desc.friendlyName].first { !$0.isEmpty } ?? fallback)
+                             : (desc.friendlyName.isEmpty ? (desc.modelName.isEmpty ? fallback : desc.modelName) : desc.friendlyName)
+            state.upsert(DiscoveredCamera(id: id, name: name, vendor: canon ? .canon : .sony, host: host, port: PTPIPPacket.standardPort,
                                           method: .ssdp, transport: .ptpip, lastSeen: Date(), details: details))
         } catch {
             state.fail("SSDP description fetch failed for \(location): \(error)")

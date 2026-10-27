@@ -45,7 +45,19 @@ enum ConnectionBuilder {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ConnectError.badHost(host) }
         let guid = PTPIPIdentity.guid(from: services.stableGUID)
-        let config = PTPIPTransport.Configuration(host: trimmed, port: port, guid: guid, vendorHint: vendorHint)
+        // The camera remembers this name and GUID as the pairing, and on a
+        // first connection waits for the user to confirm on its screen.
+        var config = PTPIPTransport.Configuration(host: trimmed, port: port, clientName: PTPIPIdentity.clientName, guid: guid,
+                                                  handshakeTimeout: PTPIPIdentity.pairingTimeout, vendorHint: vendorHint)
+        config.onProgress = { stage in
+            let step: ConnectStep
+            switch stage {
+            case .tcpConnected: step = .initCommand
+            case .initCommandAcked, .eventConnected: step = .initEvent
+            case .eventAcked: step = .session
+            }
+            Task { await progress(step) }
+        }
         let transport = PTPIPTransport(configuration: config)
         let engine = PTPEngine(transport: transport, log: services.ptpLog)
         await progress(.link)

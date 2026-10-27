@@ -228,6 +228,12 @@ public struct PTPIPFramer: Sendable {
 /// Stable per-install GUID sent in InitCommandRequest. Cameras pair on it,
 /// so it must not change between launches.
 public enum PTPIPIdentity {
+    /// The name cameras show and save for this phone. Changing it breaks
+    /// existing pairings, so it stays fixed.
+    public static let clientName = "Open Tether"
+    /// The first connection waits for the user to confirm on the camera.
+    public static let pairingTimeout: TimeInterval = 60
+
     public static func guid(from uuid: UUID) -> [UInt8] {
         let u = uuid.uuid
         return [u.0, u.1, u.2, u.3, u.4, u.5, u.6, u.7, u.8, u.9, u.10, u.11, u.12, u.13, u.14, u.15]

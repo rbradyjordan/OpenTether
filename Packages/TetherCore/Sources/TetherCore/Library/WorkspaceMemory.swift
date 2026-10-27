@@ -103,6 +103,8 @@ public final class WorkspaceMemory: @unchecked Sendable {
     }
     private static let views = Key("library.views", default: [String: ViewState]())
     public static let lastCollectionID = Key("library.lastCollection", default: "builtin.all")
+    /// Live view: thirds grid with centre lines (real estate verticals).
+    public static let shootGrid = Key("shoot.grid", default: false)
 
     public func viewState(for collectionID: String) -> ViewState { get(Self.views)[collectionID] ?? ViewState() }
 
@@ -169,11 +171,13 @@ public final class WorkspaceMemory: @unchecked Sendable {
         public var addToCollectionID: String?
         public var useCount: Int
         public var lastUsed: Date?
+        /// Real estate: the rooms to cover, applied to every session made from this template.
+        public var roomList: RoomShotList?
 
         public init(id: String = UUID().uuidString, name: String, symbol: String = "camera.aperture", destination: CaptureDestination = .both,
                     routing: RoutingRules = RoutingRules(), look: LookStack = .none, showNewestCapture: Bool = true,
                     autoExportPicks: Bool = false, tags: [String] = [], namePattern: String = "{date} {name}",
-                    addToCollectionID: String? = nil, useCount: Int = 0, lastUsed: Date? = nil) {
+                    addToCollectionID: String? = nil, useCount: Int = 0, lastUsed: Date? = nil, roomList: RoomShotList? = nil) {
             self.id = id
             self.name = name
             self.symbol = symbol
@@ -187,7 +191,14 @@ public final class WorkspaceMemory: @unchecked Sendable {
             self.addToCollectionID = addToCollectionID
             self.useCount = useCount
             self.lastUsed = lastUsed
+            self.roomList = roomList
         }
+
+        /// Built in: a listing shoot with the usual rooms. Shown until the
+        /// user deletes it; edits are saved like any template.
+        public static let listing = SessionTemplate(id: "builtin.listing", name: "Real estate listing", symbol: "house",
+                                                    destination: .both, autoExportPicks: false, tags: ["real-estate"],
+                                                    namePattern: "Listing {n}", roomList: .listing)
 
         /// Expand `{date}`, `{name}`, `{camera}`, `{n}` for a new session name.
         public func sessionName(camera: CameraIdentity?, index: Int, now: Date = Date()) -> String {
@@ -207,6 +218,18 @@ public final class WorkspaceMemory: @unchecked Sendable {
         get(Self.templates).sorted { ($0.lastUsed ?? .distantPast, $0.useCount) > ($1.lastUsed ?? .distantPast, $1.useCount) }
     }
 
+    /// Saved templates plus the built-in ones the user hasn't deleted, for
+    /// the new-session sheet. Using a built-in saves it like any other.
+    public func templatesWithBuiltIns() -> [SessionTemplate] {
+        var all = templates()
+        if !all.contains(where: { $0.id == SessionTemplate.listing.id }), !get(Self.removedBuiltIns).contains(SessionTemplate.listing.id) {
+            all.append(SessionTemplate.listing)
+        }
+        return all
+    }
+
+    private static let removedBuiltIns = Key("session.templates.removed", default: [String]())
+
     public func save(template: SessionTemplate) {
         lock.lock(); defer { lock.unlock() }
         var all = get(Self.templates)
@@ -217,6 +240,7 @@ public final class WorkspaceMemory: @unchecked Sendable {
     public func deleteTemplate(_ id: String) {
         lock.lock(); defer { lock.unlock() }
         set(Self.templates, get(Self.templates).filter { $0.id != id })
+        if id == SessionTemplate.listing.id { set(Self.removedBuiltIns, get(Self.removedBuiltIns) + [id]) }
     }
 
     /// Build a template from a session as it was shot ("Save as template").

@@ -24,6 +24,7 @@ enum ConnectStep: Int, CaseIterable, Comparable, Sendable {
         case (.link, .usb): return "USB session"
         case (.link, .ricohHTTP), (.link, .http): return "Camera reachable over Wi-Fi"
         case (.link, .ftpPush): return "FTP server listening"
+        case (.initCommand, .ptpip): return "Waiting for the camera (confirm on its screen if it asks)"
         case (.initCommand, _): return "InitCommand handshake"
         case (.initEvent, _): return "Event channel"
         case (.session, _): return "Open PTP session"
