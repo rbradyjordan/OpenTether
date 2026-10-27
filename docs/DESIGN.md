@@ -142,7 +142,10 @@ change · `pick/reject` = light impact · `connected` = success notification ·
 
 ## Screens at a glance
 
-Onboarding (3 pages, full-bleed imagery placeholder, one line each) →
+Onboarding (welcome → camera brand and EOS model → connection → tailored
+setup with the camera's own screens drawn and Canon pairing explained →
+live permissions → workflow defaults → hands-on tour → connect, demo or
+look around) →
 Home (sessions as large cards with a 3-up thumbnail strip, resume banner on
 top) → Connect hub → USB / Wi-Fi / FTP → Shoot → Loupe / Compare / Client
 review → Looks sheet → Export sheet → Progress → Settings.
