@@ -433,7 +433,7 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         guard info.supports(CanonCodes.Op.setRemoteMode) else {
             throw PTPError.vendorGate("This Canon does not offer PC remote mode over this connection.")
         }
-        try await engine.run(CanonCodes.Op.setRemoteMode, [1])
+        try await enterRemoteMode()
         if info.supports(CanonCodes.Op.setEventMode) { try await engine.run(CanonCodes.Op.setEventMode, [1]) }
         // OLC events carry the live AF state touch focus waits on.
         if info.supports(CanonCodes.Op.setRequestOLCInfoGroup) {
@@ -442,6 +442,33 @@ public final class CanonHandler: VendorHandler, @unchecked Sendable {
         // The first dump carries every property and its allowed values.
         _ = try await fetchEvents()
     }
+
+    /// SetRemoteMode(1), as EOS Utility and libgphoto2 send it to EOS R
+    /// bodies. Over Wi-Fi, a body that has just paired (R5 Mark II seen in the
+    /// field) answers GeneralError until it has finished storing the pairing
+    /// or the OK on its screen is pressed, so busy/general errors are retried
+    /// for a few seconds, then 0x15 (the EOS M / newer PowerShot value) is
+    /// tried once before giving up with a message the user can act on.
+    private func enterRemoteMode() async throws {
+        for attempt in 0 ..< remoteModeAttempts {
+            do {
+                try await engine.run(CanonCodes.Op.setRemoteMode, [1])
+                return
+            } catch PTPError.response(_, let code, _) where code == .generalError || code == .deviceBusy {
+                if attempt + 1 < remoteModeAttempts { try await Task.sleep(nanoseconds: remoteModeRetryDelay) }
+            }
+        }
+        do {
+            try await engine.run(CanonCodes.Op.setRemoteMode, [0x15])
+            return
+        } catch PTPError.response(_, let code, _) where code == .generalError || code == .deviceBusy || code == .invalidParameter {
+            throw PTPError.vendorGate("The camera refused remote control. Check its screen: if it asks to connect to \"Open Tether\", press OK, then try again. If it shows an error, turn the camera off and on and pair again.")
+        }
+    }
+
+    /// Tests shorten these.
+    var remoteModeAttempts = 5
+    var remoteModeRetryDelay: UInt64 = 1_000_000_000
 
     public func teardown() async {
         await stopLiveView()

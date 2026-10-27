@@ -80,6 +80,39 @@ final class CanonVendorTests: XCTestCase {
         XCTAssertEqual(h.available[CanonCodes.Prop.aperture], [0x20, 0x28, 0x30])
     }
 
+    /// A freshly paired body over Wi-Fi answers GeneralError for a moment
+    /// (R5 Mark II in the field); remote mode is retried, not fatal.
+    func testRemoteModeRetriesWhileTheCameraFinishesPairing() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        var refusals = 2
+        rig.transport.on(CanonCodes.Op.setRemoteMode) { _ in
+            if refusals > 0 { refusals -= 1; return .fail(.generalError) }
+            return .ok()
+        }
+        rig.transport.on(CanonCodes.Op.getEvent) { _ in .ok(Self.initialDump()) }
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        h.remoteModeRetryDelay = 1_000_000
+        try await h.prepare()
+        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.setRemoteMode).map(\.parameters), [[1], [1], [1]])
+    }
+
+    func testRemoteModeTriesTheAlternateValueThenExplains() async throws {
+        let rig = try await VendorRig(VendorFixtures.canon)
+        rig.transport.okAll()
+        rig.transport.on(CanonCodes.Op.setRemoteMode) { _ in .fail(.generalError) }
+        let h = CanonHandler(engine: rig.engine, info: rig.info)
+        h.remoteModeAttempts = 2
+        h.remoteModeRetryDelay = 1_000_000
+        do {
+            try await h.prepare()
+            XCTFail("expected a refusal")
+        } catch PTPError.vendorGate(let message) {
+            XCTAssertTrue(message.contains("press OK"))
+        }
+        XCTAssertEqual(rig.transport.requests(for: CanonCodes.Op.setRemoteMode).map(\.parameters), [[1], [1], [0x15]])
+    }
+
     func testCaptureTwoStageWithAndWithoutAF() async throws {
         let rig = try await VendorRig(VendorFixtures.canon)
         rig.transport.okAll()
