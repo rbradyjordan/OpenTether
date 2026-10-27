@@ -209,7 +209,7 @@ private struct HotspotCallout: View {
             }
         }
         .padding(TetherSpace.l)
-        .tetherCard()
+        .onboardingSurface()
         .accessibilityElement(children: .contain)
     }
 }
@@ -242,7 +242,7 @@ private struct CullingCard: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, TetherSpace.s)
-                .tetherCard()
+                .onboardingSurface()
                 Text(feedback).font(TetherFont.caption).foregroundStyle(TetherColor.ink1)
             }
             VStack(alignment: .leading, spacing: TetherSpace.s) {
@@ -303,7 +303,7 @@ private struct LibraryCard: View {
                     Spacer(minLength: 0)
                 }
                 .padding(TetherSpace.m)
-                .tetherCard()
+                .onboardingSurface()
                 .accessibilityElement(children: .combine)
             }
         }

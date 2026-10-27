@@ -36,7 +36,7 @@ struct SetupGuideStep: View {
                     VStack(spacing: 0) {
                         ForEach(guide.troubleshooting) { t in TroubleshootRow(item: t) }
                     }
-                    .tetherCard()
+                    .onboardingSurface()
                 }
             }
         }
@@ -101,7 +101,7 @@ private struct GuideStepCard: View {
             }
         }
         .padding(TetherSpace.m)
-        .tetherCard()
+        .onboardingSurface()
         .opacity(done ? 0.75 : 1)
     }
 
@@ -194,6 +194,7 @@ struct CanonPairingTimeline: View {
                     VStack(spacing: 0) {
                         ZStack {
                             Circle().fill(i <= active ? TetherColor.accent : Color.white.opacity(0.08)).frame(width: 36, height: 36)
+                                .shadow(color: i == active ? TetherColor.accent.opacity(0.8) : .clear, radius: 10)
                             Image(systemName: s.0).font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(i <= active ? .white : TetherColor.ink1)
                         }
@@ -212,8 +213,7 @@ struct CanonPairingTimeline: View {
             }
         }
         .padding(TetherSpace.l)
-        .background(TetherColor.accentSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous).stroke(TetherColor.accent.opacity(0.3), lineWidth: 0.5))
+        .onboardingSurface(selected: true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pairing has four stages: " + stages.map { $0.1 }.joined(separator: ", then "))
         .task {

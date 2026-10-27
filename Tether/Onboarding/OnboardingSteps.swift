@@ -19,19 +19,25 @@ struct WelcomeStep: View {
     var body: some View {
         ScrollView {
             VStack(spacing: TetherSpace.xl) {
-                Image("BrandIcon")
+                ZStack {
+                    Circle().fill(TetherColor.accent.opacity(0.18)).frame(width: 220, height: 220).blur(radius: 40)
+                    Circle().strokeBorder(LinearGradient(colors: [Color.white.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom), lineWidth: 1)
+                        .frame(width: 196, height: 196)
+                    Image("BrandIcon")
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: 148, height: 148)
                     .shadow(color: TetherColor.accent.opacity(0.45), radius: 36, y: 12)
                     .offset(y: float ? -5 : 5)
-                    .accessibilityHidden(true)
+                }
+                .accessibilityHidden(true)
                 VStack(spacing: TetherSpace.s) {
-                    Text("Shoot tethered.\nReview live.")
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                    (Text("Shoot tethered.\n").foregroundStyle(TetherColor.ink0)
+                     + Text("Review live.").foregroundStyle(LinearGradient(colors: [Color(hex: 0x7CC0FF), TetherColor.accent, Color(hex: 0x7B6CFF)],
+                                                                            startPoint: .leading, endPoint: .trailing)))
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(TetherColor.ink0)
                     Text("Open Tether connects your camera to this phone so every frame lands the moment you take it.")
                         .font(TetherFont.body).foregroundStyle(TetherColor.ink1)
                         .multilineTextAlignment(.center)
@@ -39,7 +45,7 @@ struct WelcomeStep: View {
                 VStack(spacing: TetherSpace.s) {
                     ForEach(Array(features.enumerated()), id: \.offset) { i, f in
                         HStack(alignment: .top, spacing: TetherSpace.m) {
-                            IconTile(systemImage: f.0, size: 40)
+                            IconTile(systemImage: f.0, active: true, size: 40)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(f.1).font(TetherFont.headline).foregroundStyle(TetherColor.ink0)
                                 Text(f.2).font(TetherFont.callout).foregroundStyle(TetherColor.ink1)
@@ -48,7 +54,7 @@ struct WelcomeStep: View {
                             Spacer(minLength: 0)
                         }
                         .padding(TetherSpace.m)
-                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: TetherRadius.control, style: .continuous))
+                        .onboardingSurface(radius: TetherRadius.control)
                         .opacity(shown ? 1 : 0)
                         .offset(y: shown || reduceMotion ? 0 : 14)
                         .animation(reduceMotion ? .none : TetherMotion.arrive.delay(0.08 * Double(i) + 0.15), value: shown)
@@ -119,7 +125,7 @@ struct CameraStep: View {
                 }
                 .padding(TetherSpace.m)
                 .frame(minHeight: TetherHit.min)
-                .hairlineBorder()
+                .onboardingSurface(selected: model.noCameraYet, radius: TetherRadius.control)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -149,10 +155,7 @@ private struct BrandTile: View {
             }
             .padding(TetherSpace.m)
             .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
-            .background(selected ? TetherColor.accentSoft : Color.white.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: TetherRadius.control, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: TetherRadius.control, style: .continuous)
-                .stroke(selected ? TetherColor.accent.opacity(0.7) : TetherColor.hairline, lineWidth: selected ? 1.5 : 0.5))
+            .onboardingSurface(selected: selected, radius: TetherRadius.control)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressScaleStyle())
@@ -188,8 +191,7 @@ private struct ModelRow: View {
             }
             .padding(.horizontal, TetherSpace.m)
             .frame(minHeight: TetherHit.min)
-            .background(selected ? TetherColor.accentSoft : Color.white.opacity(0.04),
-                        in: RoundedRectangle(cornerRadius: TetherRadius.chip, style: .continuous))
+            .onboardingSurface(selected: selected, radius: TetherRadius.chip)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

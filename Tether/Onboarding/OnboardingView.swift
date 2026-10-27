@@ -27,6 +27,7 @@ struct OnboardingView: View {
                 footer
             }
         }
+        .environment(\.onboardingTint, glow(for: model.step))
         .forceDark()
         .task {
             guard !loaded else { return }
@@ -56,7 +57,7 @@ struct OnboardingView: View {
             .disabled(model.isFirst)
             .accessibilityLabel("Back")
 
-            StepProgress(steps: model.steps, current: model.index)
+            StepProgress(steps: model.steps, current: model.index, tint: glow(for: model.step))
 
             Button("Skip") { model.finish(app: app) }
                 .font(TetherFont.callout.weight(.medium))
@@ -82,6 +83,8 @@ struct OnboardingView: View {
                 .buttonStyle(.tetherPrimary)
                 .controlSize(.large)
                 .disabled(!model.canContinue)
+                .shadow(color: TetherColor.accent.opacity(model.canContinue ? 0.45 : 0), radius: 22, y: 8)
+                .animation(TetherMotion.snap, value: model.canContinue)
                 if let hint = footerHint {
                     Text(hint).font(TetherFont.caption).foregroundStyle(TetherColor.ink2)
                         .multilineTextAlignment(.center)
@@ -159,33 +162,107 @@ struct OnboardingView: View {
 
 // MARK: - Shared pieces
 
-/// Black with one soft glow near the top, cross-fading between steps.
+/// Black with a slow aurora in the step's colour: a main glow near the top
+/// and a hue-shifted companion lower down, both drifting, cross-fading
+/// between steps. Still under Reduce Motion.
 struct OnboardingBackdrop: View {
     var color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drift = false
 
     var body: some View {
         ZStack {
             Color.black
-            RadialGradient(colors: [color.opacity(0.34), color.opacity(0.07), .clear],
-                           center: UnitPoint(x: 0.5, y: 0.08), startRadius: 0, endRadius: 520)
-                .animation(.easeInOut(duration: 0.6), value: color)
+            RadialGradient(colors: [color.opacity(0.42), color.opacity(0.10), .clear],
+                           center: UnitPoint(x: drift ? 0.38 : 0.62, y: drift ? 0.02 : 0.10),
+                           startRadius: 0, endRadius: 540)
+            RadialGradient(colors: [companion.opacity(0.22), .clear],
+                           center: UnitPoint(x: drift ? 1.05 : 0.80, y: drift ? 0.55 : 0.40),
+                           startRadius: 0, endRadius: 420)
+            RadialGradient(colors: [color.opacity(0.12), .clear],
+                           center: UnitPoint(x: drift ? 0.0 : 0.2, y: drift ? 0.95 : 0.85),
+                           startRadius: 0, endRadius: 380)
+            // Vignette keeps text crisp over the glow.
+            RadialGradient(colors: [.clear, .black.opacity(0.55)],
+                           center: .center, startRadius: 260, endRadius: 760)
         }
+        .animation(.easeInOut(duration: 0.8), value: color)
         .ignoresSafeArea()
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) { drift = true }
+        }
+    }
+
+    /// The step colour turned a quarter of the way round the wheel.
+    private var companion: Color {
+        let ui = UIColor(color)
+        var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getHue(&h, saturation: &sat, brightness: &b, alpha: &a)
+        return Color(hue: (h + 0.12).truncatingRemainder(dividingBy: 1), saturation: sat, brightness: b)
     }
 }
 
-/// One segment per step; done segments fill, the current one is accent.
+private struct OnboardingTintKey: EnvironmentKey { static let defaultValue = TetherColor.accent }
+
+extension EnvironmentValues {
+    /// The current onboarding step's colour, for eyebrows and progress.
+    var onboardingTint: Color {
+        get { self[OnboardingTintKey.self] }
+        set { self[OnboardingTintKey.self] = newValue }
+    }
+}
+
+/// Onboarding cards: Liquid Glass with a light-catching top edge; selected
+/// cards take an accent tint, an accent edge and a soft glow.
+struct OnboardingSurface: ViewModifier {
+    var selected = false
+    var radius: CGFloat = TetherRadius.card
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            .background(shape.fill(selected ? TetherColor.accent.opacity(0.14) : Color.white.opacity(0.035)))
+            .tetherGlass(in: shape, tint: selected ? TetherColor.accent.opacity(0.35) : nil)
+            .overlay(
+                shape.strokeBorder(
+                    selected
+                        ? AnyShapeStyle(LinearGradient(colors: [TetherColor.accent, TetherColor.accent.opacity(0.35)],
+                                                       startPoint: .topLeading, endPoint: .bottomTrailing))
+                        : AnyShapeStyle(LinearGradient(colors: [Color.white.opacity(0.20), Color.white.opacity(0.04)],
+                                                       startPoint: .top, endPoint: .bottom)),
+                    lineWidth: selected ? 1.5 : 0.75)
+            )
+            .shadow(color: selected ? TetherColor.accent.opacity(0.35) : .black.opacity(0.35),
+                    radius: selected ? 18 : 10, y: selected ? 6 : 4)
+    }
+}
+
+extension View {
+    func onboardingSurface(selected: Bool = false, radius: CGFloat = TetherRadius.card) -> some View {
+        modifier(OnboardingSurface(selected: selected, radius: radius))
+    }
+}
+
+/// One segment per step; done segments fill, the current one is wider,
+/// in the step's colour and glowing.
 private struct StepProgress: View {
     var steps: [OnboardingModel.Step]
     var current: Int
+    var tint: Color
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             ForEach(Array(steps.enumerated()), id: \.element) { i, _ in
                 Capsule()
-                    .fill(i < current ? TetherColor.accent.opacity(0.55) : (i == current ? TetherColor.accent : Color.white.opacity(0.14)))
-                    .frame(height: 4)
+                    .fill(i == current
+                          ? AnyShapeStyle(LinearGradient(colors: [tint, TetherColor.accent], startPoint: .leading, endPoint: .trailing))
+                          : AnyShapeStyle(i < current ? Color.white.opacity(0.55) : Color.white.opacity(0.12)))
+                    .frame(width: i == current ? 28 : nil, height: 5)
+                    .frame(maxWidth: i == current ? 28 : .infinity)
+                    .shadow(color: i == current ? tint.opacity(0.8) : .clear, radius: 6)
             }
         }
         .frame(maxWidth: 360)
@@ -201,6 +278,7 @@ struct OnboardingPageScaffold<Content: View>: View {
     var title: String
     var subtitle: String?
     @ViewBuilder var content: () -> Content
+    @Environment(\.onboardingTint) private var tint
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -208,12 +286,16 @@ struct OnboardingPageScaffold<Content: View>: View {
             VStack(alignment: .leading, spacing: TetherSpace.l) {
                 VStack(alignment: .leading, spacing: TetherSpace.s) {
                     Text(eyebrow.uppercased())
-                        .font(TetherFont.caption.weight(.semibold))
-                        .tracking(1.2)
-                        .foregroundStyle(TetherColor.accent)
+                        .font(TetherFont.caption.weight(.bold))
+                        .tracking(1.4)
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(tint.opacity(0.14), in: Capsule())
+                        .overlay(Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 0.5))
                     Text(title)
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        .foregroundStyle(TetherColor.ink0)
+                        .foregroundStyle(LinearGradient(colors: [TetherColor.ink0, TetherColor.ink0.opacity(0.72)],
+                                                        startPoint: .top, endPoint: .bottom))
                         .fixedSize(horizontal: false, vertical: true)
                     if let subtitle {
                         Text(subtitle).font(TetherFont.body).foregroundStyle(TetherColor.ink1)
@@ -279,10 +361,7 @@ struct ChoiceCard: View {
             }
             .padding(TetherSpace.l)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(selected ? TetherColor.accentSoft : Color.white.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous)
-                .stroke(selected ? TetherColor.accent.opacity(0.7) : TetherColor.hairline, lineWidth: selected ? 1.5 : 0.5))
+            .onboardingSurface(selected: selected)
             .contentShape(RoundedRectangle(cornerRadius: TetherRadius.card, style: .continuous))
         }
         .buttonStyle(PressScaleStyle())

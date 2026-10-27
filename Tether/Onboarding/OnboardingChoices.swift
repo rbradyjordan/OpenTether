@@ -145,7 +145,7 @@ struct LivePermissionRow: View {
                 Spacer(minLength: 0)
             }
             .padding(TetherSpace.l)
-            .tetherCard()
+            .onboardingSurface()
             .animation(TetherMotion.snap, value: stateKey)
             .accessibilityElement(children: .combine)
             .accessibilityValue(stateLabel)
@@ -261,7 +261,7 @@ struct WorkflowStep: View {
                     .padding(.vertical, TetherSpace.s)
                 }
                 .padding(.horizontal, TetherSpace.l)
-                .tetherCard()
+                .onboardingSurface()
             }
 
             if !app.looks.isEmpty {
@@ -285,7 +285,7 @@ struct WorkflowStep: View {
                         .foregroundStyle(TetherColor.ink0)
                 }
                 .padding(TetherSpace.m)
-                .hairlineBorder()
+                .onboardingSurface(radius: TetherRadius.control)
                 Text("Example: \(preview). Tokens: {date} {camera} {n}")
                     .font(TetherFont.caption).foregroundStyle(TetherColor.ink2)
             }
@@ -355,8 +355,7 @@ private struct DestinationRow: View {
                 Spacer(minLength: 0)
             }
             .padding(TetherSpace.m)
-            .background(selected ? TetherColor.accentSoft : Color.white.opacity(0.04),
-                        in: RoundedRectangle(cornerRadius: TetherRadius.control, style: .continuous))
+            .onboardingSurface(selected: selected, radius: TetherRadius.control)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
