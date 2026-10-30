@@ -106,6 +106,11 @@ struct ConnectHubView: View {
                            isLive: hub.usbDeviceVisible)
             }
             .staggeredAppear(0)
+            NavigationLink(value: AppRoute.canonPairing) {
+                ActionCard(title: "Pair a Canon over Wi-Fi", subtitle: "Step by step, with the camera's own screens: done once, then it just connects.",
+                           systemImage: "link.badge.plus")
+            }
+            .staggeredAppear(0)
             NavigationLink(value: AppRoute.wifi) {
                 ActionCard(title: "Wi-Fi", subtitle: "Join the camera's network, then pick it here.",
                            systemImage: "wifi", badge: hub.wifiCameraVisible ? "Camera found" : nil,
@@ -150,6 +155,7 @@ struct ConnectRouteView: View {
         switch route {
         case .usb: USBConnectView()
         case .wifi: WiFiConnectView()
+        case .canonPairing: CanonPairingView()
         case .ftpReceiver: FTPReceiverView()
         case .brandGuides: BrandGuidesView()
         case .brandGuide(let vendor): BrandGuideDetailView(vendor: vendor)

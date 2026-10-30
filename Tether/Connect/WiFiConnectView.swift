@@ -36,10 +36,11 @@ struct WiFiConnectView: View {
         SessionPickerField(selection: $session)
         ssidBanner(model)
         if model.cameraNetworkVendor == .canon || model.cameras.contains(where: { $0.vendor == .canon }) {
-            SectionCard(title: "First time with this camera?", systemImage: "link") {
-                Text("Canon bodies pair once. On the camera, choose Connect to EOS Utility → Add a device to connect to, join its Wi-Fi, then tap Connect here. The camera shows \"Open Tether\": press OK on the camera to finish. After that it connects without asking.")
-                    .font(.footnote).foregroundStyle(Theme.textSecondary)
+            NavigationLink(value: AppRoute.canonPairing) {
+                ActionCard(title: "First time with this Canon?", subtitle: "Pair it step by step. Done once; after that it connects on its own.",
+                           systemImage: "link.badge.plus")
             }
+            .buttonStyle(.plain)
         }
         if let progress = model.progress {
             ConnectingProgressView(progress: progress) { model.progress = nil }

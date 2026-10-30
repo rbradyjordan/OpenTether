@@ -9,6 +9,7 @@ enum AppTab: Hashable {
 enum AppRoute: Hashable {
     case usb
     case wifi
+    case canonPairing
     case ftpReceiver
     case brandGuides
     case brandGuide(CameraVendor)

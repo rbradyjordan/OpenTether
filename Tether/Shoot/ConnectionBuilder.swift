@@ -41,7 +41,8 @@ enum ConnectionBuilder {
     }
 
     static func connectPTPIP(host: String, port: UInt16, vendorHint: CameraVendor?, shoot: ShootSession,
-                             services: AppServices, progress: @escaping Progress) async throws -> LiveConnection {
+                             services: AppServices, progress: @escaping Progress, pairing: Bool = false,
+                             handshake: (@Sendable (PTPIPTransport.HandshakeStage) -> Void)? = nil) async throws -> LiveConnection {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ConnectError.badHost(host) }
         let guid = PTPIPIdentity.guid(from: services.stableGUID)
@@ -49,10 +50,16 @@ enum ConnectionBuilder {
         // first connection waits for the user to confirm on its screen.
         var config = PTPIPTransport.Configuration(host: trimmed, port: port, clientName: PTPIPIdentity.clientName, guid: guid,
                                                   handshakeTimeout: PTPIPIdentity.pairingTimeout, vendorHint: vendorHint)
+        if pairing {
+            // A body saving a new phone drops and refuses a few times first.
+            config.handshakeRetries = 8
+            config.retryDelay = 1.5
+        }
         config.onProgress = { stage in
+            handshake?(stage)
             let step: ConnectStep
             switch stage {
-            case .tcpConnected: step = .initCommand
+            case .tcpConnected, .awaitingConfirmation, .retrying: step = .initCommand
             case .initCommandAcked, .eventConnected: step = .initEvent
             case .eventAcked: step = .session
             }

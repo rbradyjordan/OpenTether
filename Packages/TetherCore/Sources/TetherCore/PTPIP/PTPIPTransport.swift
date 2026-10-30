@@ -26,6 +26,15 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         public var vendorHint: CameraVendor?
         /// Handshake progress for the connecting screen.
         public var onProgress: (@Sendable (HandshakeStage) -> Void)?
+        /// Pairing: a Canon that is saving the new phone drops the first TCP
+        /// connection, refuses with reason 1 for a moment, or restarts its
+        /// PTP/IP service after OK is pressed. Each of those is retried this
+        /// many times, `retryDelay` apart, before the error is reported.
+        public var handshakeRetries = 0
+        public var retryDelay: TimeInterval = 1.5
+        /// After this long without the InitCommandAck the camera is taken to be
+        /// showing its "connect to this device?" prompt (`awaitingConfirmation`).
+        public var confirmationHint: TimeInterval = 2.5
 
         public init(host: String, port: UInt16 = PTPIPPacket.standardPort, clientName: String = PTPIPIdentity.clientName,
                     guid: [UInt8], connectTimeout: TimeInterval = 8, handshakeTimeout: TimeInterval = 15,
@@ -42,7 +51,9 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
     }
 
     public enum HandshakeStage: String, Sendable, CaseIterable {
-        case tcpConnected, initCommandAcked, eventConnected, eventAcked
+        case tcpConnected, awaitingConfirmation, initCommandAcked, eventConnected, eventAcked
+        /// The attempt failed in a way pairing retries (reason for the UI), then `retrying`.
+        case retrying
     }
 
     public let kind: TransportKind = .ptpip
@@ -87,6 +98,34 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
 
     public func open() async throws {
         if isOpen { return }
+        var attempt = 0
+        while true {
+            do {
+                try await openOnce()
+                return
+            } catch let error where attempt < configuration.handshakeRetries && Self.isRetryableDuringPairing(error) {
+                attempt += 1
+                health.lastError = "\(error)"
+                configuration.onProgress?(.retrying)
+                try await Task.sleep(nanoseconds: UInt64(configuration.retryDelay * 1_000_000_000))
+            }
+        }
+    }
+
+    /// What a Canon does mid-pairing: closes the socket, refuses the port
+    /// while its service restarts, or answers reason 1 before it has saved us.
+    static func isRetryableDuringPairing(_ error: Error) -> Bool {
+        if error is ChannelError { return true }
+        guard let e = error as? PTPError else { return false }
+        switch e {
+        case .transportClosed, .notConnected: return true
+        case .vendorGate(let m): return m.contains("rejected the connection")
+        case .malformed: return true
+        default: return false
+        }
+    }
+
+    private func openOnce() async throws {
         let cmd = try await connector.connect(host: configuration.host, port: configuration.port, timeout: configuration.connectTimeout)
         command = cmd
         startCommandReader(cmd)
@@ -94,7 +133,13 @@ public final class PTPIPTransport: PTPTransport, @unchecked Sendable {
         do {
             try await cmd.send(PTPIPPacket.initCommandRequest(guid: configuration.guid, name: configuration.clientName,
                                                               protocolVersion: PTPIPPacket.protocolVersion).encode())
+            let hint = Task { [configuration] in
+                try await Task.sleep(nanoseconds: UInt64(configuration.confirmationHint * 1_000_000_000))
+                configuration.onProgress?(.awaitingConfirmation)
+            }
+            defer { hint.cancel() }
             let ack = try await withTimeout(configuration.handshakeTimeout, op: .openSession) { try await self.nextCommandPacket() }
+            hint.cancel()
             switch ack {
             case .initCommandAck(let conn, let guid, let name, _):
                 connectionNumber = conn

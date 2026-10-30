@@ -75,6 +75,11 @@ final class FakePTPIPCamera: @unchecked Sendable {
     var ackDelay: TimeInterval = 0
     /// Operations that never get an answer (a stalled camera).
     var stallOps: Set<PTPOperationCode> = []
+    /// A Canon saving a new pairing: this many InitCommandRequests are
+    /// answered by closing the socket before one is acked.
+    var dropConnectionsBeforePairing = 0
+    /// Then this many are refused with reason 1 before one is acked.
+    var rejectBeforePairing = 0
     private(set) var cancelled: [UInt32] = []
     private(set) var clientName: String?
     private(set) var firstTransactionID: UInt32?
@@ -133,6 +138,8 @@ final class FakePTPIPCamera: @unchecked Sendable {
                     case .initCommandRequest(_, let name, _):
                         lock.lock(); clientName = name; lock.unlock()
                         if refuse { try await ch.send(PTPIPPacket.initFail(reason: 2).encode()); ch.close(); return }
+                        if dropConnectionsBeforePairing > 0 { dropConnectionsBeforePairing -= 1; ch.close(); return }
+                        if rejectBeforePairing > 0 { rejectBeforePairing -= 1; try await ch.send(PTPIPPacket.initFail(reason: 1).encode()); ch.close(); return }
                         if ackDelay > 0 { try await Task.sleep(nanoseconds: UInt64(ackDelay * 1_000_000_000)) }
                         try await ch.send(PTPIPPacket.initCommandAck(connectionNumber: connectionNumber, guid: [UInt8](repeating: 9, count: 16), name: "FakeCam", protocolVersion: PTPIPPacket.protocolVersion).encode())
                     case .initEventRequest(let n):
@@ -287,6 +294,56 @@ final class PTPIPTransportTests: XCTestCase {
         await engine.disconnect()
     }
 
+    func testPairingRetriesThroughDroppedAndRejectedAttempts() async throws {
+        let cam = try FakePTPIPCamera()
+        cam.dropConnectionsBeforePairing = 2
+        cam.rejectBeforePairing = 1
+        cam.start()
+        defer { cam.stop() }
+        var cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()))
+        cfg.handshakeRetries = 5
+        cfg.retryDelay = 0.05
+        let stages = StageLog()
+        cfg.onProgress = { stages.add($0) }
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        try await transport.open()
+        XCTAssertTrue(transport.isOpen)
+        XCTAssertEqual(stages.all.filter { $0 == .retrying }.count, 3)
+        XCTAssertEqual(stages.all.last, .eventAcked)
+        await transport.close()
+    }
+
+    func testPairingGivesUpAfterTheRetryBudget() async throws {
+        let cam = try FakePTPIPCamera()
+        cam.rejectBeforePairing = 10
+        cam.start()
+        defer { cam.stop() }
+        var cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()))
+        cfg.handshakeRetries = 2
+        cfg.retryDelay = 0.02
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        do { try await transport.open(); XCTFail("expected refusal") } catch let e as PTPError {
+            guard case .vendorGate(let msg) = e else { return XCTFail("\(e)") }
+            XCTAssertTrue(msg.contains("remote-control Wi-Fi mode"))
+        }
+        XCTAssertFalse(transport.isOpen)
+    }
+
+    func testConfirmationHintFiresWhileTheCameraHoldsTheAck() async throws {
+        let cam = try FakePTPIPCamera()
+        cam.ackDelay = 0.6
+        cam.start()
+        defer { cam.stop() }
+        var cfg = PTPIPTransport.Configuration(host: "127.0.0.1", port: cam.port, guid: PTPIPIdentity.guid(from: UUID()))
+        cfg.confirmationHint = 0.2
+        let stages = StageLog()
+        cfg.onProgress = { stages.add($0) }
+        let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
+        try await transport.open()
+        XCTAssertEqual(Array(stages.all.prefix(3)), [.tcpConnected, .awaitingConfirmation, .initCommandAcked])
+        await transport.close()
+    }
+
     func testInitFailSurfacesAsGate() async throws {
         let cam = try FakePTPIPCamera()
         cam.refuse = true
@@ -309,4 +366,11 @@ final class PTPIPTransportTests: XCTestCase {
         let transport = PTPIPTransport(configuration: cfg, connector: SocketConnector())
         do { try await transport.open(); XCTFail() } catch { XCTAssertTrue(error is ChannelError) }
     }
+}
+
+final class StageLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stages: [PTPIPTransport.HandshakeStage] = []
+    func add(_ s: PTPIPTransport.HandshakeStage) { lock.lock(); stages.append(s); lock.unlock() }
+    var all: [PTPIPTransport.HandshakeStage] { lock.lock(); defer { lock.unlock() }; return stages }
 }
